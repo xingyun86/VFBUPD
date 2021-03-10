@@ -1,0 +1,29 @@
+// VFBUPD.idl : type library source for VFBUPD.exe
+
+// This file will be processed by the MIDL compiler to produce the
+// type library (VFBUPD.tlb).
+
+[ uuid(1bb61e91-fa87-4fdd-a651-b4e44752225c), version(1.0) ]
+library VFBUPD
+{
+	importlib("stdole32.tlb");
+	importlib("stdole2.tlb");
+
+	//  Primary dispatch interface for CVFBUPDDoc
+
+	[ uuid(6208ec37-994a-4d1d-9553-0061fb539c03) ]
+	dispinterface IVFBUPD
+	{
+		properties:
+
+		methods:
+	};
+
+	//  Class information for CVFBUPDDoc
+
+	[ uuid(202ee070-8ce7-4a31-ac15-b2f30760e817) ]
+	coclass VFBUPD
+	{
+		[default] dispinterface IVFBUPD;
+	};
+};

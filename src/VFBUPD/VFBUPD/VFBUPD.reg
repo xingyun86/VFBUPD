@@ -1,0 +1,17 @@
+REGEDIT
+; This .REG file may be used by your SETUP program.
+;   If a SETUP program is not available, the entries below will be
+;   registered in your InitInstance automatically with a call to
+;   CWinApp::RegisterShellFileTypes and COleObjectFactory::UpdateRegistryAll.
+
+
+HKEY_CLASSES_ROOT\VFBUPD.Application = VFBUPD Application
+
+
+HKEY_CLASSES_ROOT\VFBUPD.Application\CLSID = {202ee070-8ce7-4a31-ac15-b2f30760e817}
+
+HKEY_CLASSES_ROOT\CLSID\{202ee070-8ce7-4a31-ac15-b2f30760e817} = VFBUPD Application
+HKEY_CLASSES_ROOT\CLSID\{202ee070-8ce7-4a31-ac15-b2f30760e817}\ProgId = VFBUPD.Application
+
+
+HKEY_CLASSES_ROOT\CLSID\{202ee070-8ce7-4a31-ac15-b2f30760e817}\LocalServer32 = VFBUPD.EXE
