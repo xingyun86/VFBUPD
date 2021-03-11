@@ -1,773 +1,5 @@
 #pragma once
 
-#include <wininet.h>
-#include <string>
-#include <unordered_map>
-#if !defined(_UNICODE) && !defined(UNICODE)
-#define TSTRING std::string
-#else
-#define TSTRING std::wstring
-#endif
-
-class CAsyncClient
-{
-protected:
-    struct SContext
-    {
-        CAsyncClient* pObj;
-        DWORD dwContext;
-    } m_context;
-
-    HANDLE m_hConnectedEvent;
-    HANDLE m_hRequestOpenedEvent;
-    HANDLE m_hRequestCompleteEvent;
-
-    HINTERNET m_hInstance;
-    HINTERNET m_hConnect;
-    HINTERNET m_hRequest;
-
-    const std::unordered_map<TSTRING, TSTRING> m_cHeaders = {
-           {TEXT("Accept:"),TEXT("*,*/*")},
-           {TEXT("Accept-Language:"),TEXT("zh-cn")},
-           {TEXT("User-Agent:"),TEXT("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Safari/537.36 Edg/89.0.774.45")},
-           {TEXT("Content-Type:"),TEXT("application/x-www-form-urlencoded")},
-           {TEXT("Accept-Encoding:"),TEXT("deflate")},
-    };
-public:
-
-    CAsyncClient(void) {
-        m_hConnectedEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-        m_hRequestOpenedEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-        m_hRequestCompleteEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-
-        m_hInstance = NULL;
-        m_hConnect = NULL;
-        m_hRequest = NULL;
-    }
-
-    ~CAsyncClient(void) {
-        if (m_hConnectedEvent)
-        {
-            CloseHandle(m_hConnectedEvent);
-        }
-        if (m_hRequestOpenedEvent)
-        {
-            CloseHandle(m_hRequestOpenedEvent);
-        }
-        if (m_hRequestCompleteEvent)
-        {
-            CloseHandle(m_hRequestCompleteEvent);
-        }
-        Close();
-    }
-
-public:
-
-    typedef enum ContextHttpType
-    {
-        CONTEXT_CONNECT=0,
-        CONTEXT_REQUESTHANDLE,
-    }ContextHttpType;
-
-    BOOL Connect(LPCTSTR lpszAddr,
-        USHORT uPort = INTERNET_DEFAULT_HTTP_PORT,
-        LPCTSTR lpszAgent = _T("AsyncClient"),
-        DWORD dwTimeOut = 20000) {
-        Close();
-
-        ResetEvent(m_hConnectedEvent);
-        ResetEvent(m_hRequestOpenedEvent);
-        ResetEvent(m_hRequestCompleteEvent);
-
-        if (!(m_hInstance = InternetOpen(lpszAgent,
-            INTERNET_OPEN_TYPE_PRECONFIG,
-            NULL,
-            NULL,
-            INTERNET_FLAG_ASYNC)))
-        {
-            return FALSE;
-        }
-
-        if (InternetSetStatusCallback(m_hInstance, (INTERNET_STATUS_CALLBACK)&Callback) == INTERNET_INVALID_STATUS_CALLBACK)
-        {
-            return FALSE;
-        }
-
-        m_context.dwContext = CONTEXT_CONNECT;
-        m_context.pObj = this;
-
-        m_hConnect = InternetConnect(m_hInstance,
-            lpszAddr,
-            uPort,
-            NULL,
-            NULL,
-            INTERNET_SERVICE_HTTP,
-            INTERNET_FLAG_KEEP_CONNECTION | INTERNET_FLAG_NO_CACHE_WRITE,
-            (DWORD)&m_context);
-
-        if (m_hConnect == NULL)
-        {
-            if (GetLastError() != ERROR_IO_PENDING)
-            {
-                return FALSE;
-            }
-            if (WaitForSingleObject(m_hConnectedEvent, dwTimeOut) == WAIT_TIMEOUT)
-            {
-                return FALSE;
-            }
-        }
-
-        if (m_hConnect == NULL)
-        {
-            return FALSE;
-        }
-
-        return TRUE;
-    }
-
-    BOOL SendRequest(LPCTSTR szURI, LPCTSTR lpszReferrer, DWORD dwTimeOut = 20000, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}) {
-
-        LPCTSTR szAcceptType = _T("*/*");
-
-
-        m_context.dwContext = CONTEXT_REQUESTHANDLE;
-        m_context.pObj = this;
-
-        m_hRequest = HttpOpenRequest(m_hConnect,
-            _T("GET"),
-            szURI,
-            NULL,
-            lpszReferrer,
-            NULL,
-            INTERNET_FLAG_RELOAD | INTERNET_FLAG_KEEP_CONNECTION
-            | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_FORMS_SUBMIT
-            | INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS
-            | INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP,
-            (DWORD)&m_context);
-
-        if (m_hRequest == NULL)
-        {
-            if (GetLastError() != ERROR_IO_PENDING)
-            {
-                return FALSE;
-            }
-            if (WaitForSingleObject(m_hRequestOpenedEvent, dwTimeOut) == WAIT_TIMEOUT)
-            {
-                return FALSE;
-            }
-        }
-
-
-        if (m_hRequest == NULL)
-            return FALSE;
-
-        for (auto it : m_cHeaders)
-        {
-            auto f = vHeaders.find(it.first.c_str());
-            if (f == vHeaders.end())
-            {
-                HttpAddRequestHeaders(m_hRequest, (it.first + it.second).data(), (it.first + it.second).size(), HTTP_ADDREQ_FLAG_ADD);
-            }
-            else
-            {
-                HttpAddRequestHeaders(m_hRequest, (f->first + f->second).data(), (f->first + f->second).size(), HTTP_ADDREQ_FLAG_ADD);
-            }
-        }
-        for (auto it : vHeaders)
-        {
-            auto f = m_cHeaders.find(it.first.c_str());
-            if (f == m_cHeaders.end())
-            {
-                HttpAddRequestHeaders(m_hRequest, (it.first + it.second).data(), (it.first + it.second).size(), HTTP_ADDREQ_FLAG_ADD);
-            }
-        }
-        if (!HttpSendRequest(m_hRequest, NULL, 0, NULL, 0))
-        {
-            if (GetLastError() != ERROR_IO_PENDING)
-            {
-                return FALSE;
-            }
-        }
-
-        if (WaitForSingleObject(m_hRequestCompleteEvent, dwTimeOut) == WAIT_TIMEOUT)
-        {
-            Close();
-            return FALSE;
-        }
-
-        return TRUE;
-    }
-
-    DWORD Read(PBYTE pBuffer, DWORD dwSize, DWORD dwTimeOut = 20000) {
-        INTERNET_BUFFERS InetBuff;
-
-        FillMemory(&InetBuff, sizeof(InetBuff), 0);
-
-        InetBuff.dwStructSize = sizeof(InetBuff);
-        InetBuff.lpvBuffer = pBuffer;
-        InetBuff.dwBufferLength = dwSize - 1;
-
-
-        m_context.dwContext = CONTEXT_REQUESTHANDLE;
-        m_context.pObj = this;
-
-        if (!InternetReadFileEx(m_hRequest,
-            &InetBuff,
-            0,
-            (DWORD)&m_context))
-        {
-            if (GetLastError() == ERROR_IO_PENDING)
-            {
-                if (WaitForSingleObject(m_hRequestCompleteEvent, dwTimeOut) == WAIT_TIMEOUT)
-                {
-                    return FALSE;
-                }
-            }
-            else
-            {
-                return FALSE;
-            }
-        }
-
-        return InetBuff.dwBufferLength;
-    }
-    DWORD Write(PBYTE pBuffer, DWORD dwSize, DWORD dwTimeOut = 20000) {
-        INTERNET_BUFFERS InetBuff;
-
-        FillMemory(&InetBuff, sizeof(InetBuff), 0);
-
-        InetBuff.dwStructSize = sizeof(InetBuff);
-        InetBuff.lpvBuffer = pBuffer;
-        InetBuff.dwBufferLength = dwSize - 1;
-
-
-        m_context.dwContext = CONTEXT_REQUESTHANDLE;
-        m_context.pObj = this;
-
-        if (!InternetReadFileEx(m_hRequest,
-            &InetBuff,
-            0,
-            (DWORD)&m_context))
-        {
-            if (GetLastError() == ERROR_IO_PENDING)
-            {
-                if (WaitForSingleObject(m_hRequestCompleteEvent, dwTimeOut) == WAIT_TIMEOUT)
-                {
-                    return FALSE;
-                }
-            }
-            else
-            {
-                return FALSE;
-            }
-        }
-
-        return InetBuff.dwBufferLength;
-    }
-    void Close() {
-        if (m_hInstance)
-        {
-            InternetCloseHandle(m_hInstance);
-            m_hInstance = NULL;
-        }
-
-        if (m_hConnect)
-        {
-            InternetCloseHandle(m_hConnect);
-            m_hConnect = NULL;
-        }
-
-        if (m_hRequest)
-        {
-            InternetCloseHandle(m_hRequest);
-            m_hRequest = NULL;
-        }
-    }
-
-    static void WINAPI Callback(HINTERNET hInternet,
-        DWORD dwContext,
-        DWORD dwInternetStatus,
-        LPVOID lpStatusInfo,
-        DWORD dwStatusInfoLen) {
-        SContext* pContext = (SContext*)dwContext;
-
-        switch (pContext->dwContext)
-        {
-        case CONTEXT_CONNECT:
-            if (dwInternetStatus == INTERNET_STATUS_HANDLE_CREATED)
-            {
-                INTERNET_ASYNC_RESULT* pRes = (INTERNET_ASYNC_RESULT*)lpStatusInfo;
-                pContext->pObj->m_hConnect = (HINTERNET)pRes->dwResult;
-                SetEvent(pContext->pObj->m_hConnectedEvent);
-            }
-            break;
-
-        case CONTEXT_REQUESTHANDLE: // Request handle
-        {
-            switch (dwInternetStatus)
-            {
-            case INTERNET_STATUS_HANDLE_CREATED:
-            {
-                INTERNET_ASYNC_RESULT* pRes = (INTERNET_ASYNC_RESULT*)lpStatusInfo;
-                pContext->pObj->m_hRequest = (HINTERNET)pRes->dwResult;
-                SetEvent(pContext->pObj->m_hRequestOpenedEvent);
-            }
-            break;
-
-            case INTERNET_STATUS_REQUEST_SENT:
-            {
-                DWORD* lpBytesSent = (DWORD*)lpStatusInfo;
-            }
-            break;
-
-            case INTERNET_STATUS_REQUEST_COMPLETE:
-            {
-                INTERNET_ASYNC_RESULT* pAsyncRes = (INTERNET_ASYNC_RESULT*)lpStatusInfo;
-                SetEvent(pContext->pObj->m_hRequestCompleteEvent);
-            }
-            break;
-
-            case INTERNET_STATUS_REDIRECT:
-                //string strRealAddr = (LPSTR) lpStatusInfo;
-                break;
-
-            case INTERNET_STATUS_RECEIVING_RESPONSE:
-                break;
-
-            case INTERNET_STATUS_RESPONSE_RECEIVED:
-            {
-                DWORD* dwBytesReceived = (DWORD*)lpStatusInfo;
-                //if (*dwBytesReceived == 0)
-                //    bAllDone = TRUE;
-            }
-            }
-        }
-        }
-    }
-public:
-    static int HttpGet(const TSTRING& tsHost, const TSTRING& tsPath)
-    {
-        CAsyncClient asyncClient = {};
-        if (asyncClient.Connect(tsHost.c_str()))
-        {
-            if (asyncClient.SendRequest(tsPath.c_str(), _T("")))
-            {
-                std::string tsData = ("");
-                CHAR szBuff[1024] = {};
-                int nLen = 0;
-                while ((nLen = asyncClient.Read((PBYTE)szBuff, 1024)) > 0)
-                {
-                    tsData.append(szBuff, nLen);
-                }
-                return (0);
-            }
-            else
-            {
-                return (-1);
-            }
-        }
-        return (-1);
-    }
-};
-
-#include <afxinet.h>
-#define  IE_AGENT  TEXT("Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 2.0.50727)")
-#define  REQ_CODE_UTF8  TEXT("UTF-8")
-#define  REQ_CODE_GBK   TEXT("GBK")
-
-// 操作成功
-#define SUCCESS        0
-// 操作失败
-#define FAILURE        1
-// 操作超时
-#define OUTTIME        2
-
-#define  BUFFER_SIZE       1024
-
-#define  NORMAL_CONNECT             INTERNET_FLAG_KEEP_CONNECTION
-#define  SECURE_CONNECT             NORMAL_CONNECT | INTERNET_FLAG_SECURE
-#define  NORMAL_REQUEST             INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE
-#define  SECURE_REQUEST             NORMAL_REQUEST | INTERNET_FLAG_SECURE | \
-                                    INTERNET_FLAG_IGNORE_CERT_CN_INVALID| \
-                                    INTERNET_FLAG_IGNORE_CERT_DATE_INVALID 
-
-class CHttpToolBak
-{
-public:
-    CHttpToolBak(const CString& szReqCode = REQ_CODE_UTF8, LPCTSTR strAgent = IE_AGENT) {
-        m_pSession = new CInternetSession(strAgent);
-        m_szReqCode = szReqCode;
-        m_pConnection = NULL;
-        m_pFile = NULL;
-    }
-    virtual ~CHttpToolBak(void) {
-        Clear();
-        if (NULL != m_pSession)
-        {
-            m_pSession->Close();
-            delete m_pSession;
-            m_pSession = NULL;
-        }
-    }
-
-    int HttpGet(LPCTSTR strUrl, CString& strResponse, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}) {
-        return ExecuteRequest(TEXT("GET"), strUrl, NULL, strResponse, vHeaders, NULL);
-    }
-    int HttpGetFile(LPCTSTR strUrl, LPCTSTR lpFilePath, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}) {
-        CString str = TEXT("");
-        return ExecuteRequest(TEXT("GET"), strUrl, NULL, str, vHeaders, lpFilePath);
-    }
-    int HttpGetFileAsync(LPCTSTR strUrl, LPCTSTR lpFilePath, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}) {
-        CString str = TEXT("");
-        return ExecuteRequestAsync(TEXT("GET"), strUrl, NULL, str, vHeaders, lpFilePath);
-    }
-    int HttpPost(LPCTSTR strUrl, CString& strResponse, LPCTSTR strPostData, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}) {
-        return ExecuteRequest(TEXT("POST"), strUrl, strPostData, strResponse, vHeaders, NULL);
-    }
-
-private:
-    int ExecuteRequest(LPCTSTR strMethod, LPCTSTR strUrl, LPCTSTR strPostData, CString& strResponse, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}, LPCTSTR lpFilePath = NULL) {
-        DWORD dwFlags = 0;
-        CString strServer = TEXT("");
-        CString strObject = TEXT("");
-        DWORD dwServiceType = 0;
-        INTERNET_PORT nPort = 0;
-       
-        strResponse = TEXT("");
-
-        AfxParseURL(strUrl, dwServiceType, strServer, strObject, nPort);
-
-        if (AFX_INET_SERVICE_HTTP != dwServiceType && AFX_INET_SERVICE_HTTPS != dwServiceType)
-        {
-            return FAILURE;
-        }
-        try
-        {
-            dwFlags = ((dwServiceType == AFX_INET_SERVICE_HTTP) ? NORMAL_CONNECT : SECURE_CONNECT);
-            m_pConnection = m_pSession->GetHttpConnection(strServer, dwFlags, nPort);
-            dwFlags = ((dwServiceType == AFX_INET_SERVICE_HTTP) ? NORMAL_REQUEST : SECURE_REQUEST);
-            m_pFile = m_pConnection->OpenRequest(strMethod, strObject, NULL, 1, NULL, NULL, dwFlags | INTERNET_FLAG_RAW_DATA | INTERNET_FLAG_NO_AUTO_REDIRECT);
-            if (AFX_INET_SERVICE_HTTPS == dwServiceType)
-            {
-                m_pFile->QueryOption(INTERNET_OPTION_SECURITY_FLAGS, dwFlags);
-                dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA;
-                m_pFile->SetOption(INTERNET_OPTION_SECURITY_FLAGS, dwFlags);
-            }
-            for (auto it : m_cHeaders)
-            {
-                auto f = vHeaders.find(it.first.c_str());
-                if (f == vHeaders.end())
-                {
-                    m_pFile->AddRequestHeaders((it.first + it.second).c_str());
-                }
-                else
-                {
-                    m_pFile->AddRequestHeaders((f->first + f->second).c_str());
-                }
-            }
-            for (auto it : vHeaders)
-            {
-                auto f = m_cHeaders.find(it.first.c_str());
-                if (f == m_cHeaders.end())
-                {
-                    m_pFile->AddRequestHeaders((it.first + it.second).c_str());
-                }
-            }
-
-            if (strPostData != NULL) {
-                CStringA strData = GetReqData(strPostData);
-                m_pFile->SendRequest(NULL, 0, (LPVOID)(LPCSTR)strData, strlen(strData));
-            }
-            else {
-                m_pFile->SendRequest();
-            }
-            DWORD dwStatus = 0;
-            if (m_pFile->QueryInfoStatusCode(dwStatus))
-            {
-                switch (dwStatus)
-                {
-                case HTTP_STATUS_MOVED:
-                case HTTP_STATUS_REDIRECT:
-                {
-                    int nLastPos = 0;
-                    int nNextPos = 0;
-                    CString strRedirectUrl = TEXT("");
-                    CString strStartKey = TEXT("Location:");
-                    CString strRedirectUrlKeyL0 = TEXT("https:");
-                    CString strRedirectUrlKeyL1 = TEXT("http:");
-                    CString strRedirectUrlKeyR = TEXT("\r\n");
-                    if (m_pFile->QueryInfo(HTTP_QUERY_RAW_HEADERS_CRLF, strRedirectUrl, 0))
-                    {
-                        nNextPos = strRedirectUrl.Find(strStartKey);
-                        if (nNextPos >= 0)
-                        {
-                            nLastPos = strRedirectUrl.Find(strRedirectUrlKeyL0, nNextPos);
-                            if (nLastPos < 0)
-                            {
-                                nLastPos = strRedirectUrl.Find(strRedirectUrlKeyL1, nNextPos);
-                            }
-                            if (nLastPos >= 0)
-                            {
-                                nNextPos = strRedirectUrl.Find(strRedirectUrlKeyR, nLastPos);
-                                if (nNextPos >= 0)
-                                {
-                                    strResponse = strRedirectUrl.Mid(nLastPos, nNextPos - nLastPos);
-                                }
-                            }
-                        }
-                    }
-                }
-                break;
-                case HTTP_STATUS_OK:
-                {
-                    CHAR szChars[BUFFER_SIZE + 1] = { 0 };
-                    CStringA strRawResponse = ("");
-                    UINT nReaded = 0;
-
-                    if (lpFilePath == NULL) {
-                        while ((nReaded = m_pFile->Read((void*)szChars, BUFFER_SIZE)) > 0)
-                        {
-                            szChars[nReaded] = ('\0');
-                            strRawResponse += szChars;
-                            memset(szChars, 0, BUFFER_SIZE + 1);
-                        }
-                        strResponse = GetResData(strRawResponse);
-                    }
-                    else {
-                        CFile file = {};
-                        file.Open(lpFilePath, CFile::modeCreate | CFile::modeWrite | CFile::typeBinary);
-                        while ((nReaded = m_pFile->Read((void*)szChars, BUFFER_SIZE)) > 0)
-                        {
-                            szChars[nReaded] = ('\0');
-                            file.Write(szChars, BUFFER_SIZE);
-                            memset(szChars, 0, BUFFER_SIZE + 1);
-                        }
-                        file.Close();
-                    }
-                }
-                break;
-                default:
-                {
-                }
-                    break;
-                }                
-            }
-            
-            Clear();
-        }
-        catch (CInternetException* e)
-        {
-            Clear();
-            e->Delete();
-            switch (e->m_dwError)
-            {
-            case ERROR_INTERNET_TIMEOUT:
-                return OUTTIME;
-            default:
-                return FAILURE;
-            }
-        }
-        return SUCCESS;
-    }
-
-    int ExecuteRequestAsync(LPCTSTR strMethod, LPCTSTR strUrl, LPCTSTR strPostData, CString& strResponse, const std::unordered_map<TSTRING, TSTRING>& vHeaders = {}, LPCTSTR lpFilePath = NULL) {
-        DWORD dwFlags = 0;
-        CString strServer = TEXT("");
-        CString strObject = TEXT("");
-        DWORD dwServiceType = 0;
-        INTERNET_PORT nPort = 0;
-        CHttpFile* pAsyncHttpFile = NULL;
-        CHttpConnection* pAsyncHttpConnection = NULL;
-        CInternetSession asyncInternetSession(NULL, 1, 0, NULL, NULL, INTERNET_FLAG_ASYNC);
-        strResponse = TEXT("");
-
-        AfxParseURL(strUrl, dwServiceType, strServer, strObject, nPort);
-
-        if (AFX_INET_SERVICE_HTTP != dwServiceType && AFX_INET_SERVICE_HTTPS != dwServiceType)
-        {
-            return FAILURE;
-        }
-        try
-        {
-            asyncInternetSession.EnableStatusCallback();
-            dwFlags = ((dwServiceType == AFX_INET_SERVICE_HTTP) ? NORMAL_CONNECT : SECURE_CONNECT);
-            pAsyncHttpConnection = asyncInternetSession.GetHttpConnection(strServer, dwFlags, nPort);
-            dwFlags = ((dwServiceType == AFX_INET_SERVICE_HTTP) ? NORMAL_REQUEST : SECURE_REQUEST);
-            pAsyncHttpFile = pAsyncHttpConnection->OpenRequest(strMethod, strObject, NULL, 1, NULL, NULL, dwFlags | INTERNET_FLAG_RAW_DATA | INTERNET_FLAG_NO_AUTO_REDIRECT);
-            if (AFX_INET_SERVICE_HTTPS == dwServiceType)
-            {
-                pAsyncHttpFile->QueryOption(INTERNET_OPTION_SECURITY_FLAGS, dwFlags);
-                dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA;
-                pAsyncHttpFile->SetOption(INTERNET_OPTION_SECURITY_FLAGS, dwFlags);
-            }
-            for (auto it : m_cHeaders)
-            {
-                auto f = vHeaders.find(it.first.c_str());
-                if (f == vHeaders.end())
-                {
-                    pAsyncHttpFile->AddRequestHeaders((it.first + it.second).c_str());
-                }
-                else
-                {
-                    pAsyncHttpFile->AddRequestHeaders((f->first + f->second).c_str());
-                }
-            }
-            for (auto it : vHeaders)
-            {
-                auto f = m_cHeaders.find(it.first.c_str());
-                if (f == m_cHeaders.end())
-                {
-                    pAsyncHttpFile->AddRequestHeaders((it.first + it.second).c_str());
-                }
-            }
-
-            if (strPostData != NULL) {
-                CStringA strData = GetReqData(strPostData);
-                pAsyncHttpFile->SendRequest(NULL, 0, (LPVOID)(LPCSTR)strData, strlen(strData));
-            }
-            else {
-                m_pFile->SendRequest();
-            }
-            DWORD dwStatus = 0;
-            if (pAsyncHttpFile->QueryInfoStatusCode(dwStatus))
-            {
-                switch (dwStatus)
-                {
-                case HTTP_STATUS_MOVED:
-                case HTTP_STATUS_REDIRECT:
-                {
-                    int nLastPos = 0;
-                    int nNextPos = 0;
-                    CString strRedirectUrl = TEXT("");
-                    CString strStartKey = TEXT("Location:");
-                    CString strRedirectUrlKeyL0 = TEXT("https:");
-                    CString strRedirectUrlKeyL1 = TEXT("http:");
-                    CString strRedirectUrlKeyR = TEXT("\r\n");
-                    if (pAsyncHttpFile->QueryInfo(HTTP_QUERY_RAW_HEADERS_CRLF, strRedirectUrl, 0))
-                    {
-                        nNextPos = strRedirectUrl.Find(strStartKey);
-                        if (nNextPos >= 0)
-                        {
-                            nLastPos = strRedirectUrl.Find(strRedirectUrlKeyL0, nNextPos);
-                            if (nLastPos < 0)
-                            {
-                                nLastPos = strRedirectUrl.Find(strRedirectUrlKeyL1, nNextPos);
-                            }
-                            if (nLastPos >= 0)
-                            {
-                                nNextPos = strRedirectUrl.Find(strRedirectUrlKeyR, nLastPos);
-                                if (nNextPos >= 0)
-                                {
-                                    strResponse = strRedirectUrl.Mid(nLastPos, nNextPos - nLastPos);
-                                }
-                            }
-                        }
-                    }
-                }
-                break;
-                case HTTP_STATUS_OK:
-                {
-                    CHAR szChars[BUFFER_SIZE + 1] = { 0 };
-                    CStringA strRawResponse = ("");
-                    UINT nReaded = 0;
-
-                    if (lpFilePath == NULL) {
-                        while ((nReaded = pAsyncHttpFile->Read((void*)szChars, BUFFER_SIZE)) > 0)
-                        {
-                            szChars[nReaded] = ('\0');
-                            strRawResponse += szChars;
-                            memset(szChars, 0, BUFFER_SIZE + 1);
-                        }
-                        strResponse = GetResData(strRawResponse);
-                    }
-                    else {
-                        CFile file = {};
-                        file.Open(lpFilePath, CFile::modeCreate | CFile::modeWrite | CFile::typeBinary);
-                        while ((nReaded = pAsyncHttpFile->Read((void*)szChars, BUFFER_SIZE)) > 0)
-                        {
-                            szChars[nReaded] = ('\0');
-                            file.Write(szChars, BUFFER_SIZE);
-                            memset(szChars, 0, BUFFER_SIZE + 1);
-                        }
-                        file.Close();
-                    }
-                }
-                break;
-                default:
-                {
-                }
-                break;
-                }
-            }
-
-            Clear();
-        }
-        catch (CInternetException* e)
-        {
-            Clear();
-            e->Delete();
-            switch (e->m_dwError)
-            {
-            case ERROR_INTERNET_TIMEOUT:
-                return OUTTIME;
-            default:
-                return FAILURE;
-            }
-        }
-        return SUCCESS;
-    }
-
-    void Clear() {
-        if (NULL != m_pFile)
-        {
-            m_pFile->Close();
-            delete m_pFile;
-            m_pFile = NULL;
-        }
-
-        if (NULL != m_pConnection)
-        {
-            m_pConnection->Close();
-            delete m_pConnection;
-            m_pConnection = NULL;
-        }
-    }
-    CStringA GetReqData(const CString& szReqData) {
-        // 预算-缓冲区中多字节的长度    
-        int ansiiLen = WideCharToMultiByte(CP_UTF8, 0, szReqData, -1, NULL, 0, NULL, NULL);
-        char* pAssii = (char*)malloc(sizeof(char) * ansiiLen);
-        // 开始向缓冲区转换字节    
-        WideCharToMultiByte(CP_UTF8, 0, szReqData, -1, pAssii, ansiiLen, NULL, NULL);
-        CStringA szRet(pAssii);
-        free(pAssii);
-        return szRet;
-    }
-    CString  GetResData(const CStringA& szResData) {
-        if (m_szReqCode == REQ_CODE_GBK)
-            return CString(szResData);
-        // 预算-缓冲区中宽字节的长度    
-        int unicodeLen = MultiByteToWideChar(CP_UTF8, 0, szResData, -1, NULL, 0);
-        wchar_t* pUnicode = (wchar_t*)malloc(sizeof(wchar_t) * unicodeLen);
-        // 开始向缓冲区转换字节    
-        MultiByteToWideChar(CP_UTF8, 0, szResData, -1, pUnicode, unicodeLen);
-        CString szRet(pUnicode);
-        free(pUnicode);
-        return szRet;
-    }
-private:
-    CHttpFile* m_pFile = NULL;
-    CString m_szReqCode = TEXT("");
-    CInternetSession* m_pSession = NULL;
-    CHttpConnection* m_pConnection = NULL;
-    const std::unordered_map<TSTRING, TSTRING> m_cHeaders = {
-           {TEXT("Accept:"),TEXT("*,*/*")},
-           {TEXT("Accept-Language:"),TEXT("zh-cn")},
-           {TEXT("User-Agent:"),TEXT("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Safari/537.36 Edg/89.0.774.45")},
-           {TEXT("Content-Type:"),TEXT("application/x-www-form-urlencoded")},
-           {TEXT("Accept-Encoding:"),TEXT("deflate")},
-    };
-};
-
 /*++
  Copyright (C) Microsoft.  All Rights Reserved.
 
@@ -776,6 +8,15 @@ private:
 #include <windows.h>
 #include <wininet.h>
 #include <stdio.h>
+
+#include <string>
+#include <unordered_map>
+
+#if !defined(_UNICODE) && !defined(UNICODE)
+#define TSTRING std::string
+#else
+#define TSTRING std::wstring
+#endif
 
 #define BUFFER_LEN  4096
 #define ERR_MSG_LEN 512
@@ -836,6 +77,8 @@ public:
     std::wstring ProxyBypassName = (L"");             // Name of the proxy bypass to use
     BOOL IsSecureConnection = FALSE;      // Flag to indicate the use of SSL
     DWORD UserTimeout = 2 * 60 * 1000;            // Timeout for the async operations
+    DWORD RequestFlagsAdd = 0;//
+    DWORD RequestFlagsRem = 0;//
     std::string PostField = ("");
     std::unordered_map<TSTRING, TSTRING> Headers = {};// Headers
 };
@@ -1261,13 +504,20 @@ public:
         return (Error != ERROR_SUCCESS) ? 1 : 0;
     }
 
-    int http_get(std::string& resp, const std::string& url)
+    int http_get(std::string& resp, const std::string& url, bool no_auto_redirect=false)
     {
+        DWORD dwIndex = 0;
+        WCHAR czStatusCode[8] = { 0 };
+        DWORD dwStatusCodeLen = sizeof(czStatusCode) / sizeof(*czStatusCode);
         DWORD Error = ERROR_SUCCESS;
 
         // Callback function
         INTERNET_STATUS_CALLBACK CallbackPointer = NULL;
 
+        if (no_auto_redirect == true)
+        {
+            m_Configuration.RequestFlagsAdd = INTERNET_FLAG_NO_AUTO_REDIRECT;
+        }
         {
             std::wstring& wUrl = AToW(url);
             int nNextPos = 0;
@@ -1324,7 +574,6 @@ public:
                 }
             }
         }
-
         m_Configuration.OutputFileName = (L"");
 
         if (m_Configuration.UseProxy)
@@ -1373,34 +622,57 @@ public:
         //
 
         WaitForRequestCompletion();
-
-        if (!m_ReqContext.RespData.empty())
+       
+        if (HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, czStatusCode, &dwStatusCodeLen, &dwIndex))
         {
-            resp.assign(m_ReqContext.RespData.data(), m_ReqContext.RespData.size());
-            switch (DetectEncode((const uint8_t*)resp.data(), resp.size()))
+            DWORD dwStatusCode = std::stoul(czStatusCode);
+            switch (dwStatusCode)
             {
-            case ANSI:
-                break;
-            case UTF16_LE:
-            case UTF16_BE:
-                resp.erase(resp.begin());
-                resp.erase(resp.begin());
-                resp = WToA(std::wstring((const wchar_t*)resp.data(), resp.length() / sizeof(wchar_t)));
-                break;
-            case UTF8_BOM:
-                resp.erase(resp.begin());
-                resp.erase(resp.begin());
-                resp.erase(resp.begin());
-            case UTF8:
-                resp = WToA(UTF8ToW(resp));
-                break;
+            case HTTP_STATUS_OK:
+            {
+                if (!m_ReqContext.RespData.empty())
+                {
+                    resp.assign(m_ReqContext.RespData.data(), m_ReqContext.RespData.size());
+                    switch (DetectEncode((const uint8_t*)resp.data(), resp.size()))
+                    {
+                    case ANSI:
+                        break;
+                    case UTF16_LE:
+                    case UTF16_BE:
+                        resp.erase(resp.begin());
+                        resp.erase(resp.begin());
+                        resp = WToA(std::wstring((const wchar_t*)resp.data(), resp.length() / sizeof(wchar_t)));
+                        break;
+                    case UTF8_BOM:
+                        resp.erase(resp.begin());
+                        resp.erase(resp.begin());
+                        resp.erase(resp.begin());
+                    case UTF8:
+                        resp = WToA(UTF8ToW(resp));
+                        break;
+                    default:
+                        break;
+                    }
+                    string_replace_all(resp, "", "\x20");
+                    string_replace_all(resp, "", "\x09");
+                    string_replace_all(resp, "", "\x0D\x0A");
+                }
+            }
+            break;
+            case HTTP_STATUS_MOVED:
+            case HTTP_STATUS_REDIRECT:
+            {
+                WCHAR czRedirectUrl[10240] = { 0 };
+                DWORD dwLen = sizeof(czRedirectUrl) / sizeof(*czRedirectUrl);
+                HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, czRedirectUrl, &dwLen, NULL);
+                resp = WToA(czRedirectUrl);
+            }
+            break;
             default:
                 break;
             }
-            string_replace_all(resp, "", "\x20");
-            string_replace_all(resp, "", "\x09");
-            string_replace_all(resp, "", "\x0D\x0A");
         }
+
     Exit:
 
         // Clean up the allocated resources
@@ -2021,8 +1293,9 @@ private:
         // A real WinInet application would not want to use this flags.
         //
 
-        RequestFlags |= INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
-
+        RequestFlags |= INTERNET_FLAG_RAW_DATA | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
+        RequestFlags |= m_Configuration.RequestFlagsAdd;
+        RequestFlags &= (~m_Configuration.RequestFlagsRem);
         // Create a Request handle
         m_ReqContext.RequestHandle = HttpOpenRequestW(m_ReqContext.ConnectHandle,
             Verb,                     // GET or POST
@@ -3038,7 +2311,6 @@ private:
         // InternetReadFile will block until the buffer
         // is completely filled or the response is exhausted.
         //
-
 
         Success = InternetReadFile(m_ReqContext.RequestHandle,
             m_ReqContext.OutputBuffer,

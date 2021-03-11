@@ -654,6 +654,11 @@ void CVFBUPDDlg::OnBnClickedOk()
 			string_replace_all(strFileSuffixUrl, (""), ("\\"));
 			strFileUrl = strFilePrefixUrl + ("/file/") + strFileSuffixUrl;
 		}
+		httpTool.http_get(strResp, strFileUrl, true);
+		strFileUrl = strResp;
+	}
+	{
+		CHttpTool httpTool;
 		httpTool.http_get_file(("aaa.7z"), strFileUrl);
 		//httpTool.http_get(strResp, strFileUrl);
 		//strFileUrl = strResp;
