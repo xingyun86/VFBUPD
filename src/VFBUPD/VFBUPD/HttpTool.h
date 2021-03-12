@@ -14,8 +14,10 @@
 
 #if !defined(_UNICODE) && !defined(UNICODE)
 #define TSTRING std::string
+#define TO_TSTRING std::to_string
 #else
 #define TSTRING std::wstring
+#define TO_TSTRING std::to_wstring
 #endif
 
 #define BUFFER_LEN  4096
@@ -70,6 +72,7 @@ public:
     INTERNET_PORT ServerPort = INTERNET_DEFAULT_HTTP_PORT;  // Port to connect to
     std::wstring HostName = (L"www.microsoft.com");              // Host to connect to
     std::wstring ResourceOnServer = (L"/");      // Resource to get from the server
+    std::wstring HttpVersion = (L"HTTP/1.1");      // uses an HTTP version of 1.1 or 1.0
     std::wstring InputFileName = (L"");         // File containing data to post
     std::wstring OutputFileName = (L"response.htm");        // File to write the data received from the server
     BOOL UseProxy = FALSE;                // Flag to indicate the use of a proxy
@@ -95,6 +98,8 @@ public:
     HANDLE CompletionEvent = NULL;
     HANDLE CleanUpEvent = NULL;
     CHAR OutputBuffer[BUFFER_LEN] = { 0 };
+    DWORD DataTotalBytes = 0;
+    DWORD DataExistBytes = 0;
     DWORD DownloadedBytes = 0;
     DWORD WrittenBytes = 0;
     DWORD ReadBytes = 0;
@@ -102,6 +107,7 @@ public:
     DWORD FileSize = 0;
     DWORD LeftSize = 0;
     HANDLE DownloadFile = INVALID_HANDLE_VALUE;
+    BOOL RetryDownloadFile = FALSE;
     METHOD_TYPE Method = METHOD_NONE;
     DWORD State = 0;
 
@@ -218,26 +224,24 @@ const std::string& string_replace_all(std::string& strData, const std::string& s
     return strData;
 }
 //通用版将wstring转化为string
-__inline std::string WToA(const std::wstring& wstr, unsigned int codepage = CP_ACP)
+__inline std::string WToA(const std::wstring& ws, unsigned int cp = CP_ACP)
 {
-    int nwstrlen = WideCharToMultiByte(codepage, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
-    if (nwstrlen > 0)
+    if (!ws.empty())
     {
-        std::string str(nwstrlen, '\0');
-        WideCharToMultiByte(codepage, 0, wstr.c_str(), -1, (LPSTR)str.c_str(), nwstrlen, NULL, NULL);
-        return str;
+        std::string s(WideCharToMultiByte(cp, 0, ws.data(), -1, NULL, 0, NULL, NULL), ('\0'));
+        WideCharToMultiByte(cp, 0, ws.c_str(), -1, (LPSTR)s.data(), s.size(), NULL, NULL);
+        return s;
     }
     return ("");
 }
 //通用版将string转化为wstring
-__inline std::wstring AToW(const std::string& str, unsigned int codepage = CP_ACP)
+__inline std::wstring AToW(const std::string& s, unsigned int cp = CP_ACP)
 {
-    int nstrlen = MultiByteToWideChar(codepage, 0, str.c_str(), -1, NULL, 0);
-    if (nstrlen > 0)
+    if (!s.empty())
     {
-        std::wstring wstr(nstrlen, L'\0');
-        MultiByteToWideChar(codepage, 0, str.c_str(), -1, (LPWSTR)wstr.c_str(), nstrlen);
-        return wstr;
+        std::wstring ws(MultiByteToWideChar(cp, 0, s.data(), -1, NULL, 0), (L'\0'));
+        MultiByteToWideChar(cp, 0, s.data(), -1, (LPWSTR)ws.data(), ws.size());
+        return ws;
     }
     return (L"");
 }
@@ -383,65 +387,351 @@ public:
 
     int http_get_file(const std::string& file, const std::string& url)
     {
+        unsigned long nIndex = 0;
+        std::wstring wsData = (L"");
+        unsigned long nDataSize = 0;
         DWORD Error = ERROR_SUCCESS;
 
         // Callback function
         INTERNET_STATUS_CALLBACK CallbackPointer = NULL;
 
+        InitConfiguration(url, METHOD_GET, (""), {}, file, false);
+
+    __RETRY_AGAIN__:
+
+        // Create Session handle and specify async Mode
+        m_SessionHandle = InternetOpenW(STRING_PTR(m_Configuration.UserAgent),  // User Agent
+            m_Configuration.AccessType,                      // Preconfig or Proxy
+            STRING_PTR(m_Configuration.ProxyName),       // Proxy name
+            STRING_PTR(m_Configuration.ProxyBypassName),                          // Proxy bypass, do not bypass any address
+            INTERNET_FLAG_ASYNC);          // 0 for Synchronous
+
+        if (m_SessionHandle == NULL)
         {
-            std::wstring& wUrl = AToW(url);
-            int nNextPos = 0;
-            int nLastPos = 0;
-            std::wstring wstrHttp = L"http://";
-            std::wstring wstrHttps = L"https://";
-            if (_wcsnicmp(wUrl.c_str(), wstrHttps.c_str(), wstrHttps.length()) == 0)
+            LogInetError(GetLastError(), L"InternetOpen");
+            goto Exit;
+        }
+
+        // Set the status callback for the handle to the Callback function
+        CallbackPointer = InternetSetStatusCallbackW(m_SessionHandle, (INTERNET_STATUS_CALLBACK)InternetCallback);
+
+        if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
+        {
+            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
+            goto Exit;
+        }
+
+        // Initialize the ReqContext to be used in the asynchronous calls
+        Error = AllocateAndInitializeRequestContext();
+        if (Error != ERROR_SUCCESS)
+        {
+            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
+            goto Exit;
+        }
+
+        //
+        // Send out request and receive response
+        //
+
+        ProcessRequest(ERROR_SUCCESS);
+
+        //
+        // Wait for request completion or timeout
+        //
+
+        WaitForRequestCompletion();
+
+        nIndex = nDataSize = 0;
+        if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, NULL, &nDataSize, &nIndex) == FALSE)
+            && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+        {
+            wsData.resize(nDataSize, (L'\0'));
+            if (HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, wsData.data(), &nDataSize, &nIndex) == TRUE)
             {
-                m_Configuration.IsSecureConnection = TRUE;
-                m_Configuration.ServerPort = INTERNET_DEFAULT_HTTPS_PORT;
-                nNextPos = wstrHttps.length();
+                switch (std::stoul(wsData))
+                {
+                case HTTP_STATUS_OK:
+                {
+                    nIndex = nDataSize = 0;
+                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, NULL, &nDataSize, &nIndex) == FALSE)
+                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    {
+                        wsData.resize(nDataSize, (L'\0'));
+                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, wsData.data(), &nDataSize, &nIndex);
+                        printf("raw data:\n%ws\n", wsData.c_str());
+                    }
+                    nIndex = nDataSize = 0;
+                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, NULL, &nDataSize, &nIndex) == FALSE)
+                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    {
+                        wsData.resize(nDataSize, (L'\0'));
+                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, wsData.data(), &nDataSize, &nIndex);
+                        printf("raw data length:\n%ws\n", wsData.c_str());
+                        m_ReqContext.DataTotalBytes = std::stoul(wsData);
+                        if (m_ReqContext.DataExistBytes > 0 && m_ReqContext.DataTotalBytes > m_ReqContext.DataExistBytes)
+                        {  
+                            // Clean up the allocated resources
+                            CleanUpRequestContext();
+
+                            CleanUpSessionHandle();
+                            m_ReqContext.RetryDownloadFile = TRUE;
+                            m_Configuration.Headers.emplace(TEXT("Range:"), TEXT("bytes=")+ TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-")+ TO_TSTRING(m_ReqContext.DataTotalBytes));
+                            goto __RETRY_AGAIN__;
+                        }
+                    }
+                }
+                break;
+                case HTTP_STATUS_PARTIAL_CONTENT:
+                {
+                    nIndex = nDataSize = 0;
+                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, NULL, &nDataSize, &nIndex) == FALSE)
+                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    {
+                        wsData.resize(nDataSize, (L'\0'));
+                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, wsData.data(), &nDataSize, &nIndex);
+                        printf("raw data length:\n%ws\n", wsData.c_str());
+                        //m_ReqContext.DataTotalBytes = std::stoul(wsData);
+                        if (m_ReqContext.DataExistBytes > 0 && m_ReqContext.DataTotalBytes > (m_ReqContext.DataExistBytes + 1))
+                        {
+                            // Clean up the allocated resources
+                            CleanUpRequestContext();
+
+                            CleanUpSessionHandle();
+                            m_ReqContext.RetryDownloadFile = TRUE;
+                            m_Configuration.Headers.emplace(TEXT("Range:"), TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes + 1) + TEXT("-"));
+                            //m_Configuration.Headers.emplace(TEXT("Range:"), TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") + TO_TSTRING(m_ReqContext.DataTotalBytes - 1));
+                            goto __RETRY_AGAIN__;
+                        }
+                    }
+                }
+                break;
+                case HTTP_STATUS_MOVED:
+                case HTTP_STATUS_REDIRECT:
+                {
+                    nIndex = nDataSize = 0;
+                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, NULL, &nDataSize, &nIndex) == FALSE)
+                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    {
+                        wsData.resize(nDataSize, (L'\0'));
+                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, wsData.data(), &nDataSize, &nIndex);
+                    }
+                }
+                break;
+                default:
+                    break;
+                }
             }
-            else if (_wcsnicmp(wUrl.c_str(), wstrHttp.c_str(), wstrHttp.length()) == 0)
+        }
+
+    Exit:
+
+        // Clean up the allocated resources
+        CleanUpRequestContext();
+
+        CleanUpSessionHandle();
+
+        return (Error != ERROR_SUCCESS) ? 1 : 0;
+    }
+
+    int http_get(const std::string& url, bool no_auto_redirect = false)
+    {
+        return HttpExec(url, METHOD_GET, (""), {}, (""), no_auto_redirect);
+    }
+
+    int http_post(const std::string& url, const std::string& post_field, const std::unordered_map<TSTRING, TSTRING>& headers)
+    {
+        return HttpExec(url, METHOD_POST, post_field, headers, (""), false);
+    }
+
+private:
+    int HttpExec(const std::string& url = (""),
+        METHOD_TYPE method = METHOD_GET,
+        const std::string& post_field = (""),
+        const std::unordered_map<TSTRING, TSTRING>& headers = {},
+        const std::string& file = (""),
+        bool no_auto_redirect = false)
+    {
+        unsigned long nIndex = 0;
+        std::wstring wsData = (L"");
+        unsigned long nDataSize = 0;
+        DWORD Error = ERROR_SUCCESS;
+
+        // Callback function
+        INTERNET_STATUS_CALLBACK CallbackPointer = NULL;
+
+        InitConfiguration(url, method, post_field, headers, file, no_auto_redirect);
+
+        // Create Session handle and specify async Mode
+        m_SessionHandle = InternetOpenW(STRING_PTR(m_Configuration.UserAgent),  // User Agent
+            m_Configuration.AccessType,                      // Preconfig or Proxy
+            STRING_PTR(m_Configuration.ProxyName),       // Proxy name
+            STRING_PTR(m_Configuration.ProxyBypassName),                          // Proxy bypass, do not bypass any address
+            INTERNET_FLAG_ASYNC);          // 0 for Synchronous
+
+        if (m_SessionHandle == NULL)
+        {
+            LogInetError(GetLastError(), L"InternetOpen");
+            goto Exit;
+        }
+
+        // Set the status callback for the handle to the Callback function
+        CallbackPointer = InternetSetStatusCallbackW(m_SessionHandle, (INTERNET_STATUS_CALLBACK)InternetCallback);
+
+        if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
+        {
+            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
+            goto Exit;
+        }
+
+        // Initialize the ReqContext to be used in the asynchronous calls
+        Error = AllocateAndInitializeRequestContext();
+        if (Error != ERROR_SUCCESS)
+        {
+            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
+            goto Exit;
+        }
+
+        //
+        // Send out request and receive response
+        //
+
+        ProcessRequest(ERROR_SUCCESS);
+
+        //
+        // Wait for request completion or timeout
+        //
+
+        WaitForRequestCompletion();
+
+        nIndex = nDataSize = 0;
+        if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, NULL, &nDataSize, &nIndex) == FALSE)
+            && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+        {
+            wsData.resize(nDataSize, (L'\0'));
+            if (HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, wsData.data(), &nDataSize, &nIndex) == TRUE)
             {
-                m_Configuration.IsSecureConnection = FALSE;
-                m_Configuration.ServerPort = INTERNET_DEFAULT_HTTP_PORT;
-                nNextPos = wstrHttp.length();
+                switch (std::stoul(wsData))
+                {
+                case HTTP_STATUS_OK:
+                {
+                    nIndex = nDataSize = 0;
+                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, NULL, &nDataSize, &nIndex) == FALSE)
+                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    {
+                        wsData.resize(nDataSize, (L'\0'));
+                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, wsData.data(), &nDataSize, &nIndex);
+                    }
+                    if (!m_ReqContext.RespData.empty())
+                    {
+                        switch (DetectEncode((const uint8_t*)m_ReqContext.RespData.data(), m_ReqContext.RespData.size()))
+                        {
+                        case ANSI:
+                            break;
+                        case UTF16_LE:
+                        case UTF16_BE:
+                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                            m_ReqContext.RespData = WToA(std::wstring((const wchar_t*)m_ReqContext.RespData.data(), m_ReqContext.RespData.length() / sizeof(wchar_t)));
+                            break;
+                        case UTF8_BOM:
+                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                        case UTF8:
+                            m_ReqContext.RespData = WToA(UTF8ToW(m_ReqContext.RespData));
+                            break;
+                        default:
+                            break;
+                        }
+                    }
+                }
+                break;
+                case HTTP_STATUS_MOVED:
+                case HTTP_STATUS_REDIRECT:
+                {
+                    nIndex = nDataSize = 0;
+                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, NULL, &nDataSize, &nIndex) == FALSE)
+                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    {
+                        wsData.resize(nDataSize, (L'\0'));
+                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, wsData.data(), &nDataSize, &nIndex);
+                        m_ReqContext.RespData = WToA(wsData);
+                    }
+                }
+                break;
+                default:
+                    break;
+                }
             }
-            else
-            {
-                // not support
-            }
-            std::wstring colon = L":";
-            std::wstring sprit = L"/";
-            nLastPos = wUrl.find(colon, nNextPos);
+        }
+    Exit:
+
+        // Clean up the allocated resources
+        CleanUpRequestContext();
+
+        CleanUpSessionHandle();
+
+        return (Error != ERROR_SUCCESS) ? 1 : 0;
+    }
+    VOID InitConfiguration(const std::string& url = (""), 
+        METHOD_TYPE method = METHOD_GET, 
+        const std::string& post_field = (""), 
+        const std::unordered_map<TSTRING, TSTRING>& headers = {}, 
+        const std::string& file = (""), 
+        bool no_auto_redirect = false)
+    {
+        std::wstring& wUrl = AToW(url);
+        int nNextPos = 0;
+        int nLastPos = 0;
+        const std::wstring& wstrHttp = L"http://";
+        const std::wstring& wstrHttps = L"https://";
+        if (_wcsnicmp(wUrl.c_str(), wstrHttps.c_str(), wstrHttps.length()) == 0)
+        {
+            m_Configuration.IsSecureConnection = TRUE;
+            m_Configuration.ServerPort = INTERNET_DEFAULT_HTTPS_PORT;
+            nNextPos = wstrHttps.length();
+        }
+        else if (_wcsnicmp(wUrl.c_str(), wstrHttp.c_str(), wstrHttp.length()) == 0)
+        {
+            m_Configuration.IsSecureConnection = FALSE;
+            m_Configuration.ServerPort = INTERNET_DEFAULT_HTTP_PORT;
+            nNextPos = wstrHttp.length();
+        }
+        else
+        {
+            // not support
+        }
+        const std::wstring& colon = L":";
+        const std::wstring& sprit = L"/";
+        nLastPos = wUrl.find(colon, nNextPos);
+        if (nLastPos == std::string::npos)
+        {
+            nLastPos = wUrl.find(sprit, nNextPos);
             if (nLastPos == std::string::npos)
             {
-                nLastPos = wUrl.find(sprit, nNextPos);
-                if (nLastPos == std::string::npos)
-                {
-                    m_Configuration.HostName = wUrl.substr(nNextPos);
-                    m_Configuration.ResourceOnServer = sprit;
-                }
-                else
-                {
-                    m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
-                    m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
-                }
+                m_Configuration.HostName = wUrl.substr(nNextPos);
+                m_Configuration.ResourceOnServer = sprit;
             }
             else
             {
                 m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
-                nNextPos = nLastPos + colon.length();
-                nLastPos = wUrl.find(sprit, nNextPos);
-                if (nLastPos == std::string::npos)
-                {
-                    m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos));
-                    m_Configuration.ResourceOnServer = sprit;
-                }
-                else
-                {
-                    m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos, nLastPos - nNextPos));
-                    m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
-                }
+                m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
+            }
+        }
+        else
+        {
+            m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
+            nNextPos = nLastPos + colon.length();
+            nLastPos = wUrl.find(sprit, nNextPos);
+            if (nLastPos == std::string::npos)
+            {
+                m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos));
+                m_Configuration.ResourceOnServer = sprit;
+            }
+            else
+            {
+                m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos, nLastPos - nNextPos));
+                m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
             }
         }
 
@@ -452,390 +742,26 @@ public:
             m_Configuration.AccessType = INTERNET_OPEN_TYPE_PROXY;
         }
 
-        // Create Session handle and specify async Mode
-        m_SessionHandle = InternetOpenW(STRING_PTR(m_Configuration.UserAgent),  // User Agent
-            m_Configuration.AccessType,                      // Preconfig or Proxy
-            STRING_PTR(m_Configuration.ProxyName),       // Proxy name
-            STRING_PTR(m_Configuration.ProxyBypassName),                          // Proxy bypass, do not bypass any address
-            INTERNET_FLAG_ASYNC);          // 0 for Synchronous
-
-        if (m_SessionHandle == NULL)
-        {
-            LogInetError(GetLastError(), L"InternetOpen");
-            goto Exit;
-        }
-
-        // Set the status callback for the handle to the Callback function
-        CallbackPointer = InternetSetStatusCallbackW(m_SessionHandle, (INTERNET_STATUS_CALLBACK)InternetCallback);
-
-        if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
-        {
-            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
-            goto Exit;
-        }
-
-        // Initialize the ReqContext to be used in the asynchronous calls
-        Error = AllocateAndInitializeRequestContext();
-        if (Error != ERROR_SUCCESS)
-        {
-            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
-            goto Exit;
-        }
-
-        //
-        // Send out request and receive response
-        //
-
-        ProcessRequest(ERROR_SUCCESS);
-
-        //
-        // Wait for request completion or timeout
-        //
-
-        WaitForRequestCompletion();
-
-    Exit:
-
-        // Clean up the allocated resources
-        CleanUpRequestContext();
-
-        CleanUpSessionHandle();
-
-        return (Error != ERROR_SUCCESS) ? 1 : 0;
-    }
-
-    int http_get(std::string& resp, const std::string& url, bool no_auto_redirect=false)
-    {
-        DWORD dwIndex = 0;
-        WCHAR czStatusCode[8] = { 0 };
-        DWORD dwStatusCodeLen = sizeof(czStatusCode) / sizeof(*czStatusCode);
-        DWORD Error = ERROR_SUCCESS;
-
-        // Callback function
-        INTERNET_STATUS_CALLBACK CallbackPointer = NULL;
-
         if (no_auto_redirect == true)
         {
             m_Configuration.RequestFlagsAdd = INTERNET_FLAG_NO_AUTO_REDIRECT;
         }
+        m_Configuration.Method = method;
+        switch (m_Configuration.Method)
         {
-            std::wstring& wUrl = AToW(url);
-            int nNextPos = 0;
-            int nLastPos = 0;
-            std::wstring wstrHttp = L"http://";
-            std::wstring wstrHttps = L"https://";
-            if (_wcsnicmp(wUrl.c_str(), wstrHttps.c_str(), wstrHttps.length()) == 0)
-            {
-                m_Configuration.IsSecureConnection = TRUE;
-                m_Configuration.ServerPort = INTERNET_DEFAULT_HTTPS_PORT;
-                nNextPos = wstrHttps.length();
-            }
-            else if (_wcsnicmp(wUrl.c_str(), wstrHttp.c_str(), wstrHttp.length()) == 0)
-            {
-                m_Configuration.IsSecureConnection = FALSE;
-                m_Configuration.ServerPort = INTERNET_DEFAULT_HTTP_PORT;
-                nNextPos = wstrHttp.length();
-            }
-            else
-            {
-                // not support
-            }
-            std::wstring colon = L":";
-            std::wstring sprit = L"/";
-            nLastPos = wUrl.find(colon, nNextPos);
-            if (nLastPos == std::string::npos)
-            {
-                nLastPos = wUrl.find(sprit, nNextPos);
-                if (nLastPos == std::string::npos)
-                {
-                    m_Configuration.HostName = wUrl.substr(nNextPos);
-                    m_Configuration.ResourceOnServer = sprit;
-                }
-                else
-                {
-                    m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
-                    m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
-                }
-            }
-            else
-            {
-                m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
-                nNextPos = nLastPos + colon.length();
-                nLastPos = wUrl.find(sprit, nNextPos);
-                if (nLastPos == std::string::npos)
-                {
-                    m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos));
-                    m_Configuration.ResourceOnServer = sprit;
-                }
-                else
-                {
-                    m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos, nLastPos - nNextPos));
-                    m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
-                }
-            }
+        case METHOD_POST:
+        {
+            m_Configuration.PostField = post_field;
         }
-        m_Configuration.OutputFileName = (L"");
-
-        if (m_Configuration.UseProxy)
-        {
-            m_Configuration.AccessType = INTERNET_OPEN_TYPE_PROXY;
-        }
-
-        // Create Session handle and specify async Mode
-        m_SessionHandle = InternetOpenW(STRING_PTR(m_Configuration.UserAgent),  // User Agent
-            m_Configuration.AccessType,                      // Preconfig or Proxy
-            STRING_PTR(m_Configuration.ProxyName),       // Proxy name
-            STRING_PTR(m_Configuration.ProxyBypassName),                          // Proxy bypass, do not bypass any address
-            INTERNET_FLAG_ASYNC);          // 0 for Synchronous
-
-        if (m_SessionHandle == NULL)
-        {
-            LogInetError(GetLastError(), L"InternetOpen");
-            goto Exit;
-        }
-
-        // Set the status callback for the handle to the Callback function
-        CallbackPointer = InternetSetStatusCallbackW(m_SessionHandle, (INTERNET_STATUS_CALLBACK)InternetCallback);
-
-        if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
-        {
-            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
-            goto Exit;
-        }
-
-        // Initialize the ReqContext to be used in the asynchronous calls
-        Error = AllocateAndInitializeRequestContext();
-        if (Error != ERROR_SUCCESS)
-        {
-            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
-            goto Exit;
-        }
-
-        //
-        // Send out request and receive response
-        //
-
-        ProcessRequest(ERROR_SUCCESS);
-
-        //
-        // Wait for request completion or timeout
-        //
-
-        WaitForRequestCompletion();
-       
-        if (HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, czStatusCode, &dwStatusCodeLen, &dwIndex))
-        {
-            DWORD dwStatusCode = std::stoul(czStatusCode);
-            switch (dwStatusCode)
-            {
-            case HTTP_STATUS_OK:
-            {
-                if (!m_ReqContext.RespData.empty())
-                {
-                    resp.assign(m_ReqContext.RespData.data(), m_ReqContext.RespData.size());
-                    switch (DetectEncode((const uint8_t*)resp.data(), resp.size()))
-                    {
-                    case ANSI:
-                        break;
-                    case UTF16_LE:
-                    case UTF16_BE:
-                        resp.erase(resp.begin());
-                        resp.erase(resp.begin());
-                        resp = WToA(std::wstring((const wchar_t*)resp.data(), resp.length() / sizeof(wchar_t)));
-                        break;
-                    case UTF8_BOM:
-                        resp.erase(resp.begin());
-                        resp.erase(resp.begin());
-                        resp.erase(resp.begin());
-                    case UTF8:
-                        resp = WToA(UTF8ToW(resp));
-                        break;
-                    default:
-                        break;
-                    }
-                    string_replace_all(resp, "", "\x20");
-                    string_replace_all(resp, "", "\x09");
-                    string_replace_all(resp, "", "\x0D\x0A");
-                }
-            }
             break;
-            case HTTP_STATUS_MOVED:
-            case HTTP_STATUS_REDIRECT:
-            {
-                WCHAR czRedirectUrl[10240] = { 0 };
-                DWORD dwLen = sizeof(czRedirectUrl) / sizeof(*czRedirectUrl);
-                HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, czRedirectUrl, &dwLen, NULL);
-                resp = WToA(czRedirectUrl);
-            }
+        default:
             break;
-            default:
-                break;
-            }
         }
-
-    Exit:
-
-        // Clean up the allocated resources
-        CleanUpRequestContext();
-
-        CleanUpSessionHandle();
-
-        return (Error != ERROR_SUCCESS) ? 1 : 0;
+        if (!headers.empty())
+        {
+            m_Configuration.Headers.insert(headers.begin(), headers.end());
+        }
     }
-
-    int http_post(std::string& resp, const std::string& url, const std::string& postfield, const std::unordered_map<TSTRING, TSTRING>& headers)
-    {
-        DWORD Error = ERROR_SUCCESS;
-
-        // Callback function
-        INTERNET_STATUS_CALLBACK CallbackPointer = NULL;
-
-        {
-            std::wstring& wUrl = AToW(url);
-            int nNextPos = 0;
-            int nLastPos = 0;
-            std::wstring wstrHttp = L"http://";
-            std::wstring wstrHttps = L"https://";
-            if (_wcsnicmp(wUrl.c_str(), wstrHttps.c_str(), wstrHttps.length()) == 0)
-            {
-                m_Configuration.IsSecureConnection = TRUE;
-                m_Configuration.ServerPort = INTERNET_DEFAULT_HTTPS_PORT;
-                nNextPos = wstrHttps.length();
-            }
-            else if (_wcsnicmp(wUrl.c_str(), wstrHttp.c_str(), wstrHttp.length()) == 0)
-            {
-                m_Configuration.IsSecureConnection = FALSE;
-                m_Configuration.ServerPort = INTERNET_DEFAULT_HTTP_PORT;
-                nNextPos = wstrHttp.length();
-            }
-            else
-            {
-                // not support
-            }
-            std::wstring colon = L":";
-            std::wstring sprit = L"/";
-            nLastPos = wUrl.find(colon, nNextPos);
-            if (nLastPos == std::string::npos)
-            {
-                nLastPos = wUrl.find(sprit, nNextPos);
-                if (nLastPos == std::string::npos)
-                {
-                    m_Configuration.HostName = wUrl.substr(nNextPos);
-                    m_Configuration.ResourceOnServer = sprit;
-                }
-                else
-                {
-                    m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
-                    m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
-                }
-            }
-            else
-            {
-                m_Configuration.HostName = wUrl.substr(nNextPos, nLastPos - nNextPos);
-                nNextPos = nLastPos + colon.length();
-                nLastPos = wUrl.find(sprit, nNextPos);
-                if (nLastPos == std::string::npos)
-                {
-                    m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos));
-                    m_Configuration.ResourceOnServer = sprit;
-                }
-                else
-                {
-                    m_Configuration.ServerPort = std::stoi(wUrl.substr(nNextPos, nLastPos - nNextPos));
-                    m_Configuration.ResourceOnServer = wUrl.substr(nLastPos);
-                }
-            }
-        }
-        m_Configuration.Method = METHOD_POST;
-        m_Configuration.PostField = postfield;
-        m_Configuration.OutputFileName = (L"");
-        m_Configuration.Headers.insert(headers.begin(), headers.end());
-
-        if (m_Configuration.UseProxy)
-        {
-            m_Configuration.AccessType = INTERNET_OPEN_TYPE_PROXY;
-        }
-
-        // Create Session handle and specify async Mode
-        m_SessionHandle = InternetOpenW(STRING_PTR(m_Configuration.UserAgent),  // User Agent
-            m_Configuration.AccessType,                      // Preconfig or Proxy
-            STRING_PTR(m_Configuration.ProxyName),       // Proxy name
-            STRING_PTR(m_Configuration.ProxyBypassName),                          // Proxy bypass, do not bypass any address
-            INTERNET_FLAG_ASYNC);          // 0 for Synchronous
-
-        if (m_SessionHandle == NULL)
-        {
-            LogInetError(GetLastError(), L"InternetOpen");
-            goto Exit;
-        }
-
-        // Set the status callback for the handle to the Callback function
-        CallbackPointer = InternetSetStatusCallbackW(m_SessionHandle, (INTERNET_STATUS_CALLBACK)InternetCallback);
-
-        if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
-        {
-            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
-            goto Exit;
-        }
-
-        // Initialize the ReqContext to be used in the asynchronous calls
-        Error = AllocateAndInitializeRequestContext();
-        if (Error != ERROR_SUCCESS)
-        {
-            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
-            goto Exit;
-        }
-
-        //
-        // Send out request and receive response
-        //
-
-        ProcessRequest(ERROR_SUCCESS);
-
-        //
-        // Wait for request completion or timeout
-        //
-
-        WaitForRequestCompletion();
-
-        if (!m_ReqContext.RespData.empty())
-        {
-            resp.assign(m_ReqContext.RespData.data(), m_ReqContext.RespData.size());
-            switch (DetectEncode((const uint8_t*)resp.data(), resp.size()))
-            {
-            case ANSI:
-                break;
-            case UTF16_LE:
-            case UTF16_BE:
-                resp.erase(resp.begin());
-                resp.erase(resp.begin());
-                resp = WToA(std::wstring((const wchar_t*)resp.data(), resp.length() / sizeof(wchar_t)));
-                break;
-            case UTF8_BOM:
-                resp.erase(resp.begin());
-                resp.erase(resp.begin());
-                resp.erase(resp.begin());
-            case UTF8:
-                resp = WToA(UTF8ToW(resp));
-                break;
-            default:
-                break;
-            }
-            string_replace_all(resp, "", "\x20");
-            string_replace_all(resp, "", "\x09");
-            string_replace_all(resp, "", "\x0D\x0A");
-        }
-    Exit:
-
-        // Clean up the allocated resources
-        CleanUpRequestContext();
-
-        CleanUpSessionHandle();
-
-        return (Error != ERROR_SUCCESS) ? 1 : 0;
-    }
-
-private:
     DWORD ParseArguments(
         __in int argc,
         __in_ecount(argc) LPWSTR* argv
@@ -1300,7 +1226,7 @@ private:
         m_ReqContext.RequestHandle = HttpOpenRequestW(m_ReqContext.ConnectHandle,
             Verb,                     // GET or POST
             STRING_PTR(m_Configuration.ResourceOnServer),                 // root "/" by default
-            NULL,                     // Use default HTTP/1.1 as the version
+            STRING_PTR(m_Configuration.HttpVersion),                     // Use default HTTP/1.1 as the version
             NULL,                     // Do not provide any referrer
             NULL,                     // Do not provide Accept types
             RequestFlags,
@@ -1561,17 +1487,34 @@ private:
             }
         }
 
-        if (STRING_PTR(m_Configuration.OutputFileName) != NULL)
+        if (!m_Configuration.OutputFileName.empty())
         {
-            // Open output file
-            m_ReqContext.DownloadFile = CreateFileW(STRING_PTR(m_Configuration.OutputFileName),
-                GENERIC_WRITE,
-                0,                        // Open exclusively
-                NULL,                     // handle cannot be inherited
-                CREATE_ALWAYS,            // if file exists, delete it
-                FILE_ATTRIBUTE_NORMAL,
-                NULL);                    // No template file
+            if (m_ReqContext.RetryDownloadFile == FALSE)
+            {
+                // Open output file
+                m_ReqContext.DownloadFile = CreateFileW(STRING_PTR(m_Configuration.OutputFileName),
+                    GENERIC_WRITE,
+                    0,                        // Open exclusively
+                    NULL,                     // handle cannot be inherited
+                    CREATE_ALWAYS,            // if file exists, delete it
+                    FILE_ATTRIBUTE_NORMAL,
+                    NULL);                    // No template file
+            }
+            else
+            {
+                m_ReqContext.DownloadFile = CreateFileW(STRING_PTR(m_Configuration.OutputFileName),
+                    GENERIC_WRITE,
+                    0,
+                    NULL,                   // handle cannot be inherited
+                    OPEN_ALWAYS,            // if file exists, open it and move to end
+                    FILE_ATTRIBUTE_NORMAL,
+                    NULL);                  // No template file
 
+                if (m_ReqContext.DownloadFile != INVALID_HANDLE_VALUE)
+                {
+                    SetFilePointer(m_ReqContext.DownloadFile, 0, NULL, FILE_END);
+                }
+            }
             if (m_ReqContext.DownloadFile == INVALID_HANDLE_VALUE)
             {
                 Error = GetLastError();
@@ -1844,32 +1787,28 @@ private:
 
         while (Error == ERROR_SUCCESS && m_ReqContext.State != REQ_STATE_COMPLETE)
         {
-
             switch (m_ReqContext.State)
             {
             case REQ_STATE_SEND_REQ:
-
+            {
                 m_ReqContext.State = REQ_STATE_RESPONSE_RECV_DATA;
                 Error = SendRequest();
-
+            }
                 break;
-
             case REQ_STATE_SEND_REQ_WITH_BODY:
-
+            {
                 m_ReqContext.State = REQ_STATE_POST_GET_DATA;
                 Error = SendRequestWithBody();
-
+            }
                 break;
-
             case REQ_STATE_POST_GET_DATA:
-
+            {
                 m_ReqContext.State = REQ_STATE_POST_SEND_DATA;
                 Error = GetDataToPost();
-
+            }
                 break;
-
             case REQ_STATE_POST_SEND_DATA:
-
+            {
                 m_ReqContext.State = REQ_STATE_POST_GET_DATA;
                 Error = PostDataToServer(&Eof);
 
@@ -1877,25 +1816,22 @@ private:
                 {
                     m_ReqContext.State = REQ_STATE_POST_COMPLETE;
                 }
-
+            }
                 break;
-
             case REQ_STATE_POST_COMPLETE:
-
+            {
                 m_ReqContext.State = REQ_STATE_RESPONSE_RECV_DATA;
                 Error = CompleteRequest();
-
+            }
                 break;
-
             case REQ_STATE_RESPONSE_RECV_DATA:
-
+            {
                 m_ReqContext.State = REQ_STATE_RESPONSE_WRITE_DATA;
                 Error = RecvResponseData();
-
+            }
                 break;
-
             case REQ_STATE_RESPONSE_WRITE_DATA:
-
+            {
                 m_ReqContext.State = REQ_STATE_RESPONSE_RECV_DATA;
                 Error = WriteResponseData(&Eof);
 
@@ -1903,11 +1839,12 @@ private:
                 {
                     m_ReqContext.State = REQ_STATE_COMPLETE;
                 }
-
+            }
                 break;
-
             default:
-
+            {
+                //
+            }
                 break;
             }
         }
@@ -2370,9 +2307,21 @@ private:
 
         if (m_ReqContext.DownloadedBytes == 0)
         {
-            *Eof = TRUE;
-            goto Exit;
-
+           unsigned long nIndex = 0;
+           unsigned long nDataSize = 0;
+           std::wstring wsData = (L"");
+           if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, NULL, &nDataSize, &nIndex) == FALSE)
+               && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+           {
+               wsData.resize(nDataSize, (L'\0'));
+               HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, wsData.data(), &nDataSize, &nIndex);
+               m_ReqContext.DataTotalBytes = std::stoul(wsData);
+           }
+           if (m_ReqContext.DataTotalBytes <= m_ReqContext.DataExistBytes)
+           {
+               *Eof = TRUE;
+               goto Exit;
+           }
         }
 
         //
@@ -2399,10 +2348,12 @@ private:
                 LogSysError(Error, L"WriteFile");
                 goto Exit;;
             }
+            m_ReqContext.DataExistBytes += BytesWritten;
         }
         else
         {
             m_ReqContext.RespData.append(m_ReqContext.OutputBuffer, m_ReqContext.DownloadedBytes);
+            m_ReqContext.DataExistBytes += m_ReqContext.DownloadedBytes;
         }       
 
     Exit:
@@ -2465,6 +2416,23 @@ private:
         }
 
         return;
+    }
+public:
+    Configuration* ConfigurationPtr() { 
+        return &m_Configuration; 
+    }
+    RequestContext* RequestContextPtr() { 
+        return &m_ReqContext; 
+    }
+    std::string GetResult() {
+        std::string resp(m_ReqContext.RespData.data(), m_ReqContext.RespData.size());
+        string_replace_all(resp, "", "\x20");
+        string_replace_all(resp, "", "\x09");
+        string_replace_all(resp, "", "\x0D\x0A");
+        return resp;
+    }
+    const std::string& GetResultRaw() {
+        return m_ReqContext.RespData;
     }
 private:
     HINTERNET m_SessionHandle = NULL;

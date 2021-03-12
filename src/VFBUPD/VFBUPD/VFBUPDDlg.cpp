@@ -452,9 +452,10 @@ void CVFBUPDDlg::OnBnClickedOk()
 		std::string strUpdateTimeKeyL = (">更新日期：");
 		std::string strUpdateTimeKeyR = ("&nbsp;&nbsp;软件大小");
 		strResp = ("");
-		nRet = httpTool.http_get(strResp, strSoftWareUrl);
+		nRet = httpTool.http_get(strSoftWareUrl);
 		if (nRet == 0)
 		{
+			strResp = httpTool.RequestContextPtr()->RespData;
 			nLastPos = 0;
 			nNextPos = 0;
 			nNextPos = strResp.find(strStartKey, nLastPos);
@@ -491,9 +492,10 @@ void CVFBUPDDlg::OnBnClickedOk()
 		std::string strDownLoadUrl = ("http://www.yfvb.com/port.php?c=do&ID=48&a=0");
 		std::string strUpdateUrlKeyL = ("URL=");
 		std::string strUpdateUrlKeyR = ("\">");
-		nRet = httpTool.http_get(strResp, strDownLoadUrl);
+		nRet = httpTool.http_get(strDownLoadUrl);
 		if (nRet == 0)
 		{
+			strResp = httpTool.RequestContextPtr()->RespData;
 			nLastPos = 0;
 			nNextPos = 0;
 			nNextPos = strResp.find(strUpdateUrlKeyL, nLastPos);
@@ -514,9 +516,11 @@ void CVFBUPDDlg::OnBnClickedOk()
 		std::string strStartKey = ("<iframeclass");
 		std::string strUpdateUrlKeyL = ("src=\"");
 		std::string strUpdateUrlKeyR = ("\"");
-		nRet = httpTool.http_get(strResp, strUpdateUrl);
+		nRet = httpTool.http_get(strUpdateUrl);
 		if (nRet == 0)
 		{
+			strResp = httpTool.GetResult();
+
 			nLastPos = 0;
 			nNextPos = 0;
 			nNextPos = strResp.find(strUpdateUrlKeyL, nLastPos);
@@ -555,9 +559,10 @@ void CVFBUPDDlg::OnBnClickedOk()
 		std::string strVesKeyR = (",'");
 		std::string strWebSignKeyL = ("websign':'");
 		std::string strWebSignKeyR = ("'");
-		nRet = httpTool.http_get(strResp, strUpdate2Url);
+		nRet = httpTool.http_get(strUpdate2Url);
 		if (nRet == 0)
 		{
+			strResp = httpTool.GetResult();
 			nLastPos = 0;
 			nNextPos = 0;
 			nNextPos = strResp.find(strSignsKeyL, nLastPos);
@@ -614,12 +619,13 @@ void CVFBUPDDlg::OnBnClickedOk()
 		std::string strFileSuffixUrlKeyR = ("\",\"");
 		std::string strPostData = ("action=downprocess&signs=") + strSignsValue + ("&sign=") + strSignValue + ("&ves=") + strVesValue + ("&websign=");
 		string_replace_all(strPostData, ("\%3F"), ("?"));
-		nRet = httpTool.http_post(strResp, strPostUrl, strPostData, {
+		nRet = httpTool.http_post(strPostUrl, strPostData, {
 			{TEXT("origin:"),TEXT("https://yfvb.lanzous.com") },
 			{TEXT("referer:"),TEXT("https://yfvb.lanzous.com/fn?VzFQOlwyUj4AbgptBWZSa1Q_aUmFRKAVzUGoGMQdtU2MJPFcyC28FZVY2UT9QMw_c_c") },
 			});
 		if (nRet == 0)
 		{
+			strResp = httpTool.GetResult();
 			nLastPos = 0;
 			nNextPos = 0;
 			nNextPos = strResp.find(strFilePrefixUrlKeyL, nLastPos);
@@ -654,12 +660,15 @@ void CVFBUPDDlg::OnBnClickedOk()
 			string_replace_all(strFileSuffixUrl, (""), ("\\"));
 			strFileUrl = strFilePrefixUrl + ("/file/") + strFileSuffixUrl;
 		}
-		httpTool.http_get(strResp, strFileUrl, true);
-		strFileUrl = strResp;
+		nRet = httpTool.http_get(strFileUrl, true);
+		if (nRet == 0)
+		{
+			strFileUrl = strResp = httpTool.GetResult();
+		}
 	}
 	{
 		CHttpTool httpTool;
-		httpTool.http_get_file(("aaa.7z"), strFileUrl);
+		nRet = httpTool.http_get_file(("aaa.7z"), strFileUrl);
 		//httpTool.http_get(strResp, strFileUrl);
 		//strFileUrl = strResp;
 	}
