@@ -8,7 +8,7 @@ class CVFBUPDDlgAutoProxy;
 
 
 // CVFBUPDDlg dialog
-class CVFBUPDDlg : public CDialogEx
+class CVFBUPDDlg : public CDialogEx, public WindowHandle
 {
 	DECLARE_DYNAMIC(CVFBUPDDlg);
 	friend class CVFBUPDDlgAutoProxy;
@@ -31,7 +31,7 @@ public:
 protected:
 	CVFBUPDDlgAutoProxy* m_pAutoProxy;
 	HICON m_hIcon;
-
+	std::shared_ptr<std::thread> m_taskThread = nullptr;
 	BOOL CanExit();
 
 	// Generated message map functions
@@ -42,7 +42,6 @@ protected:
 	afx_msg void OnClose();
 	virtual void OnOK();
 	virtual void OnCancel();
+	virtual void OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes);
 	DECLARE_MESSAGE_MAP()
-public:
-	afx_msg void OnBnClickedOk();
 };
