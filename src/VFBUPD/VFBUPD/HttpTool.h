@@ -85,7 +85,7 @@ public:
     std::wstring ProxyName = (L"");             // Name of the proxy to use
     std::wstring ProxyBypassName = (L"");             // Name of the proxy bypass to use
     BOOL IsSecureConnection = FALSE;      // Flag to indicate the use of SSL
-    DWORD UserTimeout = 2 * 60 * 1000;            // Timeout for the async operations
+    DWORD UserTimeout = 30 * 1000;// 2 * 60 * 1000;            // Timeout for the async operations
     DWORD RequestFlagsAdd = 0;//
     DWORD RequestFlagsRem = 0;//
     std::string PostField = ("");
@@ -107,7 +107,7 @@ public:
         ProxyName = (L"");             // Name of the proxy to use
         ProxyBypassName = (L"");             // Name of the proxy bypass to use
         IsSecureConnection = FALSE;      // Flag to indicate the use of SSL
-        UserTimeout = 2 * 60 * 1000;            // Timeout for the async operations
+        UserTimeout = 30 * 1000;// 2 * 60 * 1000;            // Timeout for the async operations
         RequestFlagsAdd = 0;//
         RequestFlagsRem = 0;//
         PostField = ("");
@@ -537,14 +537,18 @@ public:
                             m_ReqContext.DataTotalBytes = std::stoul(wsData);
                         }
                         if (m_ReqContext.DataExistBytes > 0 && m_ReqContext.DataTotalBytes > m_ReqContext.DataExistBytes)
-                        {  
+                        {
                             // Clean up the allocated resources
                             CleanUpRequestContext();
 
                             CleanUpSessionHandle();
                             m_ReqContext.RetryDownloadFile = TRUE;
-                            printf("Range:%d-%d\n", m_ReqContext.DataExistBytes + 1, m_ReqContext.DataTotalBytes);
-                            m_Configuration.Headers.emplace(TEXT("Range:"), TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes + 1) + TEXT("-"));// +TO_TSTRING(m_ReqContext.DataTotalBytes));
+                            printf("Range:%d-%d\n", m_ReqContext.DataExistBytes, m_ReqContext.DataTotalBytes);
+                            if (m_Configuration.Headers.find(TEXT("Range:")) == m_Configuration.Headers.end())
+                            {
+                                m_Configuration.Headers.emplace(TEXT("Range:"), TEXT(""));
+                            }
+                            m_Configuration.Headers.at(TEXT("Range:")) = TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") + TO_TSTRING(m_ReqContext.DataTotalBytes);
                             goto __RETRY_AGAIN__;
                         }
                     }
@@ -560,16 +564,19 @@ public:
                         HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_RANGE, wsData.data(), &nDataSize, &nIndex);
                         printf("raw data length:\n%ws\n", wsData.c_str());
                         //m_ReqContext.DataTotalBytes = std::stoul(wsData);
-                        if (m_ReqContext.DataExistBytes > 0 && m_ReqContext.DataTotalBytes > (m_ReqContext.DataExistBytes + 1))
+                        if (m_ReqContext.DataExistBytes > 0 && m_ReqContext.DataTotalBytes > m_ReqContext.DataExistBytes)
                         {
                             // Clean up the allocated resources
                             CleanUpRequestContext();
 
                             CleanUpSessionHandle();
                             m_ReqContext.RetryDownloadFile = TRUE;
-                            printf("Range:%d-%d\n", m_ReqContext.DataExistBytes + 1, m_ReqContext.DataTotalBytes);
-                            //m_Configuration.Headers.emplace(TEXT("Range:"), TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes + 1) + TEXT("-"));
-                            m_Configuration.Headers.emplace(TEXT("Range:"), TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-"));// +TO_TSTRING(m_ReqContext.DataTotalBytes));
+                            printf("Range:%d-%d\n", m_ReqContext.DataExistBytes, m_ReqContext.DataTotalBytes);
+                            if (m_Configuration.Headers.find(TEXT("Range:")) == m_Configuration.Headers.end())
+                            {
+                                m_Configuration.Headers.emplace(TEXT("Range:"), TEXT(""));
+                            }
+                            m_Configuration.Headers.at(TEXT("Range:")) = TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") + TO_TSTRING(m_ReqContext.DataTotalBytes);
                             goto __RETRY_AGAIN__;
                         }
                     }

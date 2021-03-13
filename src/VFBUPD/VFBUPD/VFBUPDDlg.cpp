@@ -115,6 +115,10 @@ BOOL CVFBUPDDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
+	SetWindowText(TEXT("蓝奏云下载工具-V1.0"));
+	SetDlgItemText(IDOK, TEXT("下载"));
+	SetDlgItemText(IDCANCEL, TEXT("关闭"));
+	SetDlgItemText(IDC_STATIC_DOWNLOAD, TEXT("Progress:"));
 	CProgressCtrl* pWnd = (CProgressCtrl*)GetDlgItem(IDC_PROGRESS_DOWNLOAD);
 	if (pWnd != NULL)
 	{
@@ -426,8 +430,6 @@ void CVFBUPDDlg::OnOK()
 				{
 					CHttpTool httpTool;
 					nRet = httpTool.http_get_file(("aaa.7z"), strFileUrl, thiz);
-					//httpTool.http_get(strResp, strFileUrl);
-					//strFileUrl = strResp;
 				}
 				thiz->GetDlgItem(IDOK)->EnableWindow(TRUE);
 				thiz->m_taskThread = NULL;
@@ -450,8 +452,7 @@ void CVFBUPDDlg::OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes)
 	if (pWnd != NULL)
 	{
 		pWnd->SetPos(((float)dwExistBytes / dwTotalBytes) * 100);
-		TSTRING tsText = TEXT("");
-		tsText = TO_TSTRING(dwExistBytes) + TEXT("*100/") + TO_TSTRING(dwTotalBytes) + TEXT("=") + TO_TSTRING(((float)dwExistBytes / dwTotalBytes) * 100) + TEXT("%");
+		TSTRING tsText = TEXT("Progress: ") + TO_TSTRING(dwExistBytes) + TEXT("*100/") + TO_TSTRING(dwTotalBytes) + TEXT("=") + TO_TSTRING(((float)dwExistBytes / dwTotalBytes) * 100) + TEXT("%");
 		SetDlgItemText(IDC_STATIC_DOWNLOAD, tsText.c_str());
 	}
 }
