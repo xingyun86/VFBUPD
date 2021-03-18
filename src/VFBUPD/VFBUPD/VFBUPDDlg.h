@@ -31,7 +31,6 @@ public:
 protected:
 	CVFBUPDDlgAutoProxy* m_pAutoProxy;
 	HICON m_hIcon;
-	std::shared_ptr<std::thread> m_taskThread = nullptr;
 	BOOL CanExit();
 
 	// Generated message map functions
@@ -43,5 +42,23 @@ protected:
 	virtual void OnOK();
 	virtual void OnCancel();
 	virtual void OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes);
+	afx_msg void OnBnClickedButtonShow();
 	DECLARE_MESSAGE_MAP()
+
+private:
+	TSTRING AppDir() {
+		TSTRING filePath(MAX_PATH, TEXT('\0'));
+		GetModuleFileName(NULL, (LPTSTR)filePath.data(), (DWORD)filePath.size());
+		return filePath.substr(0, filePath.rfind(TEXT('\\')));
+	}
+	TSTRING AppDir_Posix() {
+		TSTRING filePath(MAX_PATH, TEXT('\0'));
+		GetModuleFileName(NULL, (LPTSTR)filePath.data(), (DWORD)filePath.size());
+		for (auto& it : filePath) { if (it == TEXT('\\')) { it = TEXT('/'); } }
+		return filePath.substr(0, filePath.rfind(TEXT('/')));
+	}
+public:
+	TSTRING m_fileUrl = TEXT("");
+	TSTRING m_savePath = AppDir() + TEXT("\\files\\");
+	std::shared_ptr<std::thread> m_taskThread = nullptr;
 };

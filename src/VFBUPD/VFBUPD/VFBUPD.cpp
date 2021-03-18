@@ -116,12 +116,14 @@ BOOL CVFBUPDApp::InitInstance()
 		if (cmdInfo.m_nShellCommand == CCommandLineInfo::AppRegister)
 			return FALSE;
 	}
-
-	AllocConsole();
-	freopen(("CONIN$"), ("rb"), stdin);
-	freopen(("CONOUT$"), ("wb"), stdout);
-	freopen(("CONOUT$"), ("wb"), stderr);
-
+#ifdef _DEBUG
+	if (AllocConsole())
+	{
+		freopen(("CONIN$"), ("rb"), stdin);
+		freopen(("CONOUT$"), ("wb"), stdout);
+		freopen(("CONOUT$"), ("wb"), stderr);
+	}
+#endif
 	CVFBUPDDlg dlg;
 	m_pMainWnd = &dlg;
 	INT_PTR nResponse = dlg.DoModal();
@@ -147,6 +149,9 @@ BOOL CVFBUPDApp::InitInstance()
 		delete pShellManager;
 	}
 
+#ifdef _DEBUG
+	FreeConsole();
+#endif
 #if !defined(_AFXDLL) && !defined(_AFX_NO_MFC_CONTROLS_IN_DIALOGS)
 	ControlBarCleanUp();
 #endif

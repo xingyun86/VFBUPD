@@ -294,8 +294,7 @@ __inline std::string WToA(const std::wstring& ws, unsigned int cp = CP_ACP)
     if (!ws.empty())
     {
         std::string s(WideCharToMultiByte(cp, 0, ws.data(), -1, NULL, 0, NULL, NULL), ('\0'));
-        WideCharToMultiByte(cp, 0, ws.c_str(), -1, (LPSTR)s.data(), s.size(), NULL, NULL);
-        return s;
+        return s.substr(0, WideCharToMultiByte(cp, 0, ws.c_str(), -1, (LPSTR)s.data(), s.size(), NULL, NULL) - 1);
     }
     return ("");
 }
@@ -305,8 +304,7 @@ __inline std::wstring AToW(const std::string& s, unsigned int cp = CP_ACP)
     if (!s.empty())
     {
         std::wstring ws(MultiByteToWideChar(cp, 0, s.data(), -1, NULL, 0), (L'\0'));
-        MultiByteToWideChar(cp, 0, s.data(), -1, (LPWSTR)ws.data(), ws.size());
-        return ws;
+        return ws.substr(0, MultiByteToWideChar(cp, 0, s.data(), -1, (LPWSTR)ws.data(), ws.size()) - 1);
     }
     return (L"");
 }
@@ -531,7 +529,7 @@ public:
                     {
                         wsData.resize(nDataSize, (L'\0'));
                         HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_LENGTH, wsData.data(), &nDataSize, &nIndex);
-                        printf("raw data length:\n%ws\n", wsData.c_str());
+                        printf("raw data content length:\n%ws\n", wsData.c_str());
                         if (m_ReqContext.DataTotalBytes == 0)
                         {
                             m_ReqContext.DataTotalBytes = std::stoul(wsData);
@@ -548,7 +546,7 @@ public:
                             {
                                 m_Configuration.Headers.emplace(TEXT("Range:"), TEXT(""));
                             }
-                            m_Configuration.Headers.at(TEXT("Range:")) = TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") + TO_TSTRING(m_ReqContext.DataTotalBytes);
+                            m_Configuration.Headers.at(TEXT("Range:")) = TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") +TO_TSTRING(m_ReqContext.DataTotalBytes);
                             goto __RETRY_AGAIN__;
                         }
                     }
@@ -562,8 +560,7 @@ public:
                     {
                         wsData.resize(nDataSize, (L'\0'));
                         HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_CONTENT_RANGE, wsData.data(), &nDataSize, &nIndex);
-                        printf("raw data length:\n%ws\n", wsData.c_str());
-                        //m_ReqContext.DataTotalBytes = std::stoul(wsData);
+                        printf("raw data content range:\n%ws\n", wsData.c_str());
                         if (m_ReqContext.DataExistBytes > 0 && m_ReqContext.DataTotalBytes > m_ReqContext.DataExistBytes)
                         {
                             // Clean up the allocated resources
@@ -576,7 +573,7 @@ public:
                             {
                                 m_Configuration.Headers.emplace(TEXT("Range:"), TEXT(""));
                             }
-                            m_Configuration.Headers.at(TEXT("Range:")) = TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") + TO_TSTRING(m_ReqContext.DataTotalBytes);
+                            m_Configuration.Headers.at(TEXT("Range:")) = TEXT("bytes=") + TO_TSTRING(m_ReqContext.DataExistBytes) + TEXT("-") +TO_TSTRING(m_ReqContext.DataTotalBytes);
                             goto __RETRY_AGAIN__;
                         }
                     }
@@ -688,57 +685,64 @@ private:
             wsData.resize(nDataSize, (L'\0'));
             if (HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_STATUS_CODE, wsData.data(), &nDataSize, &nIndex) == TRUE)
             {
-                switch (std::stoul(wsData))
+                if (no_auto_redirect == false || (std::stoul(wsData) == HTTP_STATUS_MOVED && std::stoul(wsData) == HTTP_STATUS_REDIRECT))
                 {
-                case HTTP_STATUS_OK:
-                {
-                    nIndex = nDataSize = 0;
-                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, NULL, &nDataSize, &nIndex) == FALSE)
-                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    switch (std::stoul(wsData))
                     {
-                        wsData.resize(nDataSize, (L'\0'));
-                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, wsData.data(), &nDataSize, &nIndex);
-                    }
-                    if (!m_ReqContext.RespData.empty())
+                    case HTTP_STATUS_OK:
                     {
-                        switch (DetectEncode((const uint8_t*)m_ReqContext.RespData.data(), m_ReqContext.RespData.size()))
+                        nIndex = nDataSize = 0;
+                        if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, NULL, &nDataSize, &nIndex) == FALSE)
+                            && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
                         {
-                        case ANSI:
-                            break;
-                        case UTF16_LE:
-                        case UTF16_BE:
-                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
-                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
-                            m_ReqContext.RespData = WToA(std::wstring((const wchar_t*)m_ReqContext.RespData.data(), m_ReqContext.RespData.length() / sizeof(wchar_t)));
-                            break;
-                        case UTF8_BOM:
-                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
-                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
-                            m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
-                        case UTF8:
-                            m_ReqContext.RespData = WToA(UTF8ToW(m_ReqContext.RespData));
-                            break;
-                        default:
-                            break;
+                            wsData.resize(nDataSize, (L'\0'));
+                            HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_RAW_HEADERS, wsData.data(), &nDataSize, &nIndex);
+                        }
+                        if (!m_ReqContext.RespData.empty())
+                        {
+                            switch (DetectEncode((const uint8_t*)m_ReqContext.RespData.data(), m_ReqContext.RespData.size()))
+                            {
+                            case ANSI:
+                                break;
+                            case UTF16_LE:
+                            case UTF16_BE:
+                                m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                                m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                                m_ReqContext.RespData = WToA(std::wstring((const wchar_t*)m_ReqContext.RespData.data(), m_ReqContext.RespData.length() / sizeof(wchar_t)));
+                                break;
+                            case UTF8_BOM:
+                                m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                                m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                                m_ReqContext.RespData.erase(m_ReqContext.RespData.begin());
+                            case UTF8:
+                                m_ReqContext.RespData = WToA(UTF8ToW(m_ReqContext.RespData));
+                                break;
+                            default:
+                                break;
+                            }
                         }
                     }
-                }
-                break;
-                case HTTP_STATUS_MOVED:
-                case HTTP_STATUS_REDIRECT:
-                {
-                    nIndex = nDataSize = 0;
-                    if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, NULL, &nDataSize, &nIndex) == FALSE)
-                        && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                    break;
+                    case HTTP_STATUS_MOVED:
+                    case HTTP_STATUS_REDIRECT:
                     {
-                        wsData.resize(nDataSize, (L'\0'));
-                        HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, wsData.data(), &nDataSize, &nIndex);
-                        m_ReqContext.RespData = WToA(wsData);
+                        nIndex = nDataSize = 0;
+                        if ((HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, NULL, &nDataSize, &nIndex) == FALSE)
+                            && (GetLastError() == ERROR_INSUFFICIENT_BUFFER) && (nDataSize > 0))
+                        {
+                            wsData.resize(nDataSize, (L'\0'));
+                            HttpQueryInfoW(m_ReqContext.RequestHandle, HTTP_QUERY_LOCATION, wsData.data(), &nDataSize, &nIndex);
+                            m_ReqContext.RespData = WToA(wsData);
+                        }
+                    }
+                    break;
+                    default:
+                        break;
                     }
                 }
-                break;
-                default:
-                    break;
+                else
+                {
+                    Error = ERROR_CONNECTION_ACTIVE;
                 }
             }
         }
@@ -761,6 +765,7 @@ private:
     {
         m_ReqContext.reset();
         m_Configuration.reset();
+        //m_Configuration.HttpVersion = L"HTTP/2";
         m_Configuration.Instance = inst;
         std::wstring& wUrl = AToW(url);
         int nNextPos = 0;
@@ -1975,62 +1980,62 @@ private:
 
         UNREFERENCED_PARAMETER(dwStatusInformationLength);
 
-        //fprintf(stderr, "Callback Received for Handle %p \t", hInternet);
+        fprintf(stderr, "Callback Received for Handle %p \t", hInternet);
 
         switch (dwInternetStatus)
         {
         case INTERNET_STATUS_COOKIE_SENT:
-            //fprintf(stderr, "Status: Cookie found and will be sent with request\n");
+            fprintf(stderr, "Status: Cookie found and will be sent with request\n");
             break;
 
         case INTERNET_STATUS_COOKIE_RECEIVED:
-            //fprintf(stderr, "Status: Cookie Received\n");
+            fprintf(stderr, "Status: Cookie Received\n");
             break;
 
         case INTERNET_STATUS_COOKIE_HISTORY:
 
-            //fprintf(stderr, "Status: Cookie History\n");
+            fprintf(stderr, "Status: Cookie History\n");
 
             cookieHistory = *((InternetCookieHistory*)lpvStatusInformation);
 
             if (cookieHistory.fAccepted)
             {
-                //fprintf(stderr, "Cookie Accepted\n");
+                fprintf(stderr, "Cookie Accepted\n");
             }
             if (cookieHistory.fLeashed)
             {
-                //fprintf(stderr, "Cookie Leashed\n");
+                fprintf(stderr, "Cookie Leashed\n");
             }
             if (cookieHistory.fDowngraded)
             {
-                //fprintf(stderr, "Cookie Downgraded\n");
+                fprintf(stderr, "Cookie Downgraded\n");
             }
             if (cookieHistory.fRejected)
             {
-                //fprintf(stderr, "Cookie Rejected\n");
+                fprintf(stderr, "Cookie Rejected\n");
             }
 
 
             break;
 
         case INTERNET_STATUS_CLOSING_CONNECTION:
-            //fprintf(stderr, "Status: Closing Connection\n");
+            fprintf(stderr, "Status: Closing Connection\n");
             break;
 
         case INTERNET_STATUS_CONNECTED_TO_SERVER:
-            //fprintf(stderr, "Status: Connected to Server\n");
+            fprintf(stderr, "Status: Connected to Server\n");
             break;
 
         case INTERNET_STATUS_CONNECTING_TO_SERVER:
-            //fprintf(stderr, "Status: Connecting to Server\n");
+            fprintf(stderr, "Status: Connecting to Server\n");
             break;
 
         case INTERNET_STATUS_CONNECTION_CLOSED:
-            //fprintf(stderr, "Status: Connection Closed\n");
+            fprintf(stderr, "Status: Connection Closed\n");
             break;
 
         case INTERNET_STATUS_HANDLE_CLOSING:
-            //fprintf(stderr, "Status: Handle Closing\n");
+            fprintf(stderr, "Status: Handle Closing\n");
 
             //
             // Signal the cleanup routine that it is
@@ -2042,31 +2047,29 @@ private:
             break;
 
         case INTERNET_STATUS_HANDLE_CREATED:
-            //fprintf(stderr,
-            //    "Handle %x created\n",
-            //    ((LPINTERNET_ASYNC_RESULT)lpvStatusInformation)->dwResult);
+            fprintf(stderr, "Handle %x created\n", ((LPINTERNET_ASYNC_RESULT)lpvStatusInformation)->dwResult);
 
             break;
 
         case INTERNET_STATUS_INTERMEDIATE_RESPONSE:
-            //fprintf(stderr, "Status: Intermediate response\n");
+            fprintf(stderr, "Status: Intermediate response\n");
             break;
 
         case INTERNET_STATUS_RECEIVING_RESPONSE:
-            //fprintf(stderr, "Status: Receiving Response\n");
+            fprintf(stderr, "Status: Receiving Response\n");
             break;
 
         case INTERNET_STATUS_RESPONSE_RECEIVED:
-            //fprintf(stderr, "Status: Response Received (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
+            fprintf(stderr, "Status: Response Received (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
 
             break;
 
         case INTERNET_STATUS_REDIRECT:
-            //fprintf(stderr, "Status: Redirect\n");
+            fprintf(stderr, "Status: Redirect\n");
             break;
 
         case INTERNET_STATUS_REQUEST_COMPLETE:
-            //fprintf(stderr, "Status: Request complete\n");
+            fprintf(stderr, "Status: Request complete\n");
 
             thiz->ProcessRequest(((LPINTERNET_ASYNC_RESULT)lpvStatusInformation)->dwError);
 
@@ -2074,31 +2077,31 @@ private:
 
         case INTERNET_STATUS_REQUEST_SENT:
 
-            //fprintf(stderr, "Status: Request sent (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
+            fprintf(stderr, "Status: Request sent (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
             break;
 
         case INTERNET_STATUS_DETECTING_PROXY:
-            //fprintf(stderr, "Status: Detecting Proxy\n");
+            fprintf(stderr, "Status: Detecting Proxy\n");
             break;
 
         case INTERNET_STATUS_RESOLVING_NAME:
-            //fprintf(stderr, "Status: Resolving Name\n");
+            fprintf(stderr, "Status: Resolving Name\n");
             break;
 
         case INTERNET_STATUS_NAME_RESOLVED:
-            //fprintf(stderr, "Status: Name Resolved\n");
+            fprintf(stderr, "Status: Name Resolved\n");
             break;
 
         case INTERNET_STATUS_SENDING_REQUEST:
-            //fprintf(stderr, "Status: Sending request\n");
+            fprintf(stderr, "Status: Sending request\n");
             break;
 
         case INTERNET_STATUS_STATE_CHANGE:
-            //fprintf(stderr, "Status: State Change\n");
+            fprintf(stderr, "Status: State Change\n");
             break;
 
         case INTERNET_STATUS_P3P_HEADER:
-            //fprintf(stderr, "Status: Received P3P header\n");
+            fprintf(stderr, "Status: Received P3P header\n");
             break;
 
         default:
@@ -2226,7 +2229,7 @@ private:
 
             if (Error == ERROR_IO_PENDING)
             {
-                //fprintf(stderr, "Waiting for InternetWriteFile to complete\n");
+                fprintf(stderr, "Waiting for InternetWriteFile to complete\n");
             }
             else
             {
@@ -2261,7 +2264,7 @@ private:
         DWORD Error = ERROR_SUCCESS;
         BOOL Success;
 
-        //fprintf(stderr, "Finished posting file\n");
+        fprintf(stderr, "Finished posting file\n");
 
         Success = AcquireRequestHandle();
         if (!Success)
@@ -2279,7 +2282,7 @@ private:
             Error = GetLastError();
             if (Error == ERROR_IO_PENDING)
             {
-                //fprintf(stderr, "Waiting for HttpEndRequest to complete \n");
+                fprintf(stderr, "Waiting for HttpEndRequest to complete \n");
             }
             else
             {
@@ -2342,7 +2345,7 @@ private:
             Error = GetLastError();
             if (Error == ERROR_IO_PENDING)
             {
-                //fprintf(stderr, "Waiting for InternetReadFile to complete\n");
+                fprintf(stderr, "Waiting for InternetReadFile to complete\n");
             }
             else
             {

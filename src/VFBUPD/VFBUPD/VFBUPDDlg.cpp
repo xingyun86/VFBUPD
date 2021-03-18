@@ -80,6 +80,7 @@ BEGIN_MESSAGE_MAP(CVFBUPDDlg, CDialogEx)
 	ON_WM_CLOSE()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BUTTON_SHOW, &CVFBUPDDlg::OnBnClickedButtonShow)
 END_MESSAGE_MAP()
 
 
@@ -115,9 +116,10 @@ BOOL CVFBUPDDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-	SetWindowText(TEXT("蓝奏云下载工具-V1.0"));
-	SetDlgItemText(IDOK, TEXT("下载"));
-	SetDlgItemText(IDCANCEL, TEXT("关闭"));
+	SetWindowText(TEXT("FatCatTool-V1.0"));
+	SetDlgItemText(IDC_BUTTON_SHOW, TEXT("FilePath"));
+	SetDlgItemText(IDOK, TEXT("Download"));
+	SetDlgItemText(IDCANCEL, TEXT("Close"));
 	SetDlgItemText(IDC_STATIC_DOWNLOAD, TEXT("Progress:"));
 	CProgressCtrl* pWnd = (CProgressCtrl*)GetDlgItem(IDC_PROGRESS_DOWNLOAD);
 	if (pWnd != NULL)
@@ -125,6 +127,7 @@ BOOL CVFBUPDDlg::OnInitDialog()
 		pWnd->SetRange(0, 100);
 		pWnd->SetStep(1);
 	}
+	CreateDirectory(m_savePath.c_str(), NULL);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -194,6 +197,13 @@ void CVFBUPDDlg::OnOK()
 {
 	if (m_taskThread == nullptr)
 	{
+		CString fileUrl = TEXT("");
+		GetDlgItemText(IDC_EDIT_URL, fileUrl);
+		m_fileUrl = fileUrl;
+		if (m_fileUrl.empty())
+		{
+			return;
+		}
 		GetDlgItem(IDOK)->EnableWindow(FALSE);
 		m_taskThread = std::make_shared<std::thread>([](void* p)
 			{
@@ -201,166 +211,169 @@ void CVFBUPDDlg::OnOK()
 				int nRet = 0;
 				int nLastPos = 0;
 				int nNextPos = 0;
-				std::string strVersion = ("");
-				std::string strUpdateTime = ("");
 				std::string strResp = ("");
+				std::string strFileUrl = ("");
+				if (thiz->m_fileUrl.compare(TEXT("http://www.yfvb.com/port.php?c=do&ID=48&a=0")) == 0)
 				{
-					CHttpTool httpTool;
-					std::string strSoftWareUrl = ("http://www.yfvb.com/soft-48.htm");
-					std::string strStartKey = ("<divalign='center'><imgclass=\"rounded\"src=\"img/softpic/vfb.png\"width='150'height='150'alt=''/>");
-					std::string strVersionKeyL = ("<h3>");
-					std::string strVersionKeyR = ("</h3>");
-					std::string strUpdateTimeKeyL = (">更新日期：");
-					std::string strUpdateTimeKeyR = ("&nbsp;&nbsp;软件大小");
-					strResp = ("");
-					nRet = httpTool.http_get(strSoftWareUrl);
-					if (nRet == 0)
+					std::string strVersion = ("");
+					std::string strUpdateTime = ("");
 					{
-						strResp = httpTool.RequestContextPtr()->RespData;
-						nLastPos = 0;
-						nNextPos = 0;
-						nNextPos = strResp.find(strStartKey, nLastPos);
-						if (nNextPos != std::string::npos)
+						CHttpTool httpTool;
+						std::string strSoftWareUrl = ("http://www.yfvb.com/soft-48.htm");
+						std::string strStartKey = ("<divalign='center'><imgclass=\"rounded\"src=\"img/softpic/vfb.png\"width='150'height='150'alt=''/>");
+						std::string strVersionKeyL = ("<h3>");
+						std::string strVersionKeyR = ("</h3>");
+						std::string strUpdateTimeKeyL = (">更新日期：");
+						std::string strUpdateTimeKeyR = ("&nbsp;&nbsp;软件大小");
+						strResp = ("");
+						nRet = httpTool.http_get(strSoftWareUrl);
+						if (nRet == 0)
 						{
-							nLastPos = nNextPos + strStartKey.length();
-							nNextPos = strResp.find(strVersionKeyL, nLastPos);
+							strResp = httpTool.RequestContextPtr()->RespData;
+							nLastPos = 0;
+							nNextPos = 0;
+							nNextPos = strResp.find(strStartKey, nLastPos);
 							if (nNextPos != std::string::npos)
 							{
-								nLastPos = nNextPos + strVersionKeyL.length();
-								nNextPos = strResp.find(strVersionKeyR, nLastPos);
+								nLastPos = nNextPos + strStartKey.length();
+								nNextPos = strResp.find(strVersionKeyL, nLastPos);
 								if (nNextPos != std::string::npos)
 								{
-									strVersion = strResp.substr(nLastPos, nNextPos - nLastPos);
 									nLastPos = nNextPos + strVersionKeyL.length();
-									nNextPos = strResp.find(strUpdateTimeKeyL, nLastPos);
+									nNextPos = strResp.find(strVersionKeyR, nLastPos);
 									if (nNextPos != std::string::npos)
 									{
-										nLastPos = nNextPos + strUpdateTimeKeyL.length();
-										nNextPos = strResp.find(strUpdateTimeKeyR, nLastPos);
+										strVersion = strResp.substr(nLastPos, nNextPos - nLastPos);
+										nLastPos = nNextPos + strVersionKeyL.length();
+										nNextPos = strResp.find(strUpdateTimeKeyL, nLastPos);
 										if (nNextPos != std::string::npos)
 										{
-											strUpdateTime = strResp.substr(nLastPos, nNextPos - nLastPos);
+											nLastPos = nNextPos + strUpdateTimeKeyL.length();
+											nNextPos = strResp.find(strUpdateTimeKeyR, nLastPos);
+											if (nNextPos != std::string::npos)
+											{
+												strUpdateTime = strResp.substr(nLastPos, nNextPos - nLastPos);
+											}
 										}
 									}
 								}
 							}
 						}
 					}
-				}
-				std::string strUpdateUrl = ("");
-				{
-					CHttpTool httpTool;
-					std::string strDownLoadUrl = ("http://www.yfvb.com/port.php?c=do&ID=48&a=0");
-					std::string strUpdateUrlKeyL = ("URL=");
-					std::string strUpdateUrlKeyR = ("\">");
-					nRet = httpTool.http_get(strDownLoadUrl);
-					if (nRet == 0)
+					std::string strUpdateUrl = ("");
 					{
-						strResp = httpTool.RequestContextPtr()->RespData;
-						nLastPos = 0;
-						nNextPos = 0;
-						nNextPos = strResp.find(strUpdateUrlKeyL, nLastPos);
-						if (nNextPos != std::string::npos)
+						CHttpTool httpTool;
+						std::string strDownLoadUrl = ("http://www.yfvb.com/port.php?c=do&ID=48&a=0");
+						std::string strUpdateUrlKeyL = ("URL=");
+						std::string strUpdateUrlKeyR = ("\">");
+						nRet = httpTool.http_get(strDownLoadUrl);
+						if (nRet == 0)
 						{
-							nLastPos = nNextPos + strUpdateUrlKeyL.length();
-							nNextPos = strResp.find(strUpdateUrlKeyR, nLastPos);
+							strResp = httpTool.RequestContextPtr()->RespData;
+							nLastPos = 0;
+							nNextPos = 0;
+							nNextPos = strResp.find(strUpdateUrlKeyL, nLastPos);
 							if (nNextPos != std::string::npos)
 							{
-								strUpdateUrl = strResp.substr(nLastPos, nNextPos - nLastPos);
+								nLastPos = nNextPos + strUpdateUrlKeyL.length();
+								nNextPos = strResp.find(strUpdateUrlKeyR, nLastPos);
+								if (nNextPos != std::string::npos)
+								{
+									strUpdateUrl = strResp.substr(nLastPos, nNextPos - nLastPos);
+								}
 							}
 						}
 					}
-				}
-				std::string strUpdate2Url = ("");
-				{
-					CHttpTool httpTool;
-					std::string strStartKey = ("<iframeclass");
-					std::string strUpdateUrlKeyL = ("src=\"");
-					std::string strUpdateUrlKeyR = ("\"");
-					nRet = httpTool.http_get(strUpdateUrl);
-					if (nRet == 0)
+					std::string strUpdate2Url = ("");
 					{
-						strResp = httpTool.GetResult();
+						CHttpTool httpTool;
+						std::string strStartKey = ("<iframeclass");
+						std::string strUpdateUrlKeyL = ("src=\"");
+						std::string strUpdateUrlKeyR = ("\"");
+						nRet = httpTool.http_get(strUpdateUrl);
+						if (nRet == 0)
+						{
+							strResp = httpTool.GetResult();
 
-						nLastPos = 0;
-						nNextPos = 0;
-						nNextPos = strResp.find(strUpdateUrlKeyL, nLastPos);
-						if (nNextPos != std::string::npos)
-						{
-							nLastPos = nNextPos + strUpdateUrlKeyL.length();
-							nNextPos = strResp.find(strUpdateUrlKeyR, nLastPos);
+							nLastPos = 0;
+							nNextPos = 0;
+							nNextPos = strResp.find(strUpdateUrlKeyL, nLastPos);
 							if (nNextPos != std::string::npos)
 							{
-								strUpdate2Url = ("https://yfvb.lanzous.com") + strResp.substr(nLastPos, nNextPos - nLastPos);
+								nLastPos = nNextPos + strUpdateUrlKeyL.length();
+								nNextPos = strResp.find(strUpdateUrlKeyR, nLastPos);
+								if (nNextPos != std::string::npos)
+								{
+									strUpdate2Url = ("https://yfvb.lanzous.com") + strResp.substr(nLastPos, nNextPos - nLastPos);
+								}
 							}
 						}
 					}
-				}
-				std::string strSignsKey = ("signs");
-				std::string strSignsValue = ("");
-				std::string strActionKey = ("action");
-				std::string strActionValue = ("downprocess");
-				std::string strSignKey = ("sign");
-				std::string strSignValue = ("");
-				std::string strVesKey = ("ves");
-				std::string strVesValue = ("");
-				std::string strWebSignKey = ("websign");
-				std::string strWebSignValue = ("");
-				std::string strFileUrl = ("");
-				std::string strFilePrefixUrl = ("");
-				std::string strFileSuffixUrl = ("");
-				{
-					//获取POST参数信息
-					CHttpTool httpTool;
-					std::string strSignsKeyL = ("ajaxdata='");
-					std::string strSignsKeyR = ("';");
-					std::string strSignKeyL = ("'signs':ajaxdata,'sign':'");
-					std::string strSignKeyR = ("','");
-					std::string strVesKeyL = ("ves':");
-					std::string strVesKeyR = (",'");
-					std::string strWebSignKeyL = ("websign':'");
-					std::string strWebSignKeyR = ("'");
-					nRet = httpTool.http_get(strUpdate2Url);
-					if (nRet == 0)
+					std::string strSignsKey = ("signs");
+					std::string strSignsValue = ("");
+					std::string strActionKey = ("action");
+					std::string strActionValue = ("downprocess");
+					std::string strSignKey = ("sign");
+					std::string strSignValue = ("");
+					std::string strVesKey = ("ves");
+					std::string strVesValue = ("");
+					std::string strWebSignKey = ("websign");
+					std::string strWebSignValue = ("");
+					std::string strFilePrefixUrl = ("");
+					std::string strFileSuffixUrl = ("");
 					{
-						strResp = httpTool.GetResult();
-						nLastPos = 0;
-						nNextPos = 0;
-						nNextPos = strResp.find(strSignsKeyL, nLastPos);
-						if (nNextPos >= 0)
+						//获取POST参数信息
+						CHttpTool httpTool;
+						std::string strSignsKeyL = ("ajaxdata='");
+						std::string strSignsKeyR = ("';");
+						std::string strSignKeyL = ("'signs':ajaxdata,'sign':'");
+						std::string strSignKeyR = ("','");
+						std::string strVesKeyL = ("ves':");
+						std::string strVesKeyR = (",'");
+						std::string strWebSignKeyL = ("websign':'");
+						std::string strWebSignKeyR = ("'");
+						nRet = httpTool.http_get(strUpdate2Url);
+						if (nRet == 0)
 						{
-							nLastPos = nNextPos + strSignsKeyL.length();
-							nNextPos = strResp.find(strSignsKeyR, nLastPos);
+							strResp = httpTool.GetResult();
+							nLastPos = 0;
+							nNextPos = 0;
+							nNextPos = strResp.find(strSignsKeyL, nLastPos);
 							if (nNextPos >= 0)
 							{
-								strSignsValue = strResp.substr(nLastPos, nNextPos - nLastPos);
-								nLastPos = nNextPos + strSignsKeyR.length();
-								nNextPos = strResp.find(strSignKeyL, nLastPos);
+								nLastPos = nNextPos + strSignsKeyL.length();
+								nNextPos = strResp.find(strSignsKeyR, nLastPos);
 								if (nNextPos >= 0)
 								{
-									nLastPos = nNextPos + strSignKeyL.length();
-									nNextPos = strResp.find(strSignKeyR, nLastPos);
+									strSignsValue = strResp.substr(nLastPos, nNextPos - nLastPos);
+									nLastPos = nNextPos + strSignsKeyR.length();
+									nNextPos = strResp.find(strSignKeyL, nLastPos);
 									if (nNextPos >= 0)
 									{
-										strSignValue = strResp.substr(nLastPos, nNextPos - nLastPos);
-										nLastPos = nNextPos + strSignKeyR.length();
-										nNextPos = strResp.find(strVesKeyL, nLastPos);
+										nLastPos = nNextPos + strSignKeyL.length();
+										nNextPos = strResp.find(strSignKeyR, nLastPos);
 										if (nNextPos >= 0)
 										{
-											nLastPos = nNextPos + strVesKeyL.length();
-											nNextPos = strResp.find(strVesKeyR, nLastPos);
+											strSignValue = strResp.substr(nLastPos, nNextPos - nLastPos);
+											nLastPos = nNextPos + strSignKeyR.length();
+											nNextPos = strResp.find(strVesKeyL, nLastPos);
 											if (nNextPos >= 0)
 											{
-												strVesValue = strResp.substr(nLastPos, nNextPos - nLastPos);
-												nLastPos = nNextPos + strVesKeyR.length();
-												nNextPos = strResp.find(strWebSignKeyL, nLastPos);
+												nLastPos = nNextPos + strVesKeyL.length();
+												nNextPos = strResp.find(strVesKeyR, nLastPos);
 												if (nNextPos >= 0)
 												{
-													nLastPos = nNextPos + strWebSignKeyL.length();
-													nNextPos = strResp.find(strWebSignKeyR, nLastPos);
+													strVesValue = strResp.substr(nLastPos, nNextPos - nLastPos);
+													nLastPos = nNextPos + strVesKeyR.length();
+													nNextPos = strResp.find(strWebSignKeyL, nLastPos);
 													if (nNextPos >= 0)
 													{
-														strWebSignValue = strResp.substr(nLastPos, nNextPos - nLastPos);
+														nLastPos = nNextPos + strWebSignKeyL.length();
+														nNextPos = strResp.find(strWebSignKeyR, nLastPos);
+														if (nNextPos >= 0)
+														{
+															strWebSignValue = strResp.substr(nLastPos, nNextPos - nLastPos);
+														}
 													}
 												}
 											}
@@ -370,66 +383,90 @@ void CVFBUPDDlg::OnOK()
 							}
 						}
 					}
-				}
-				{
-					CHttpTool httpTool;
-					std::string strPostUrl = ("https://yfvb.lanzous.com/ajaxm.php");
-					std::string strFilePrefixUrlKeyL = ("\"dom\":\"");
-					std::string strFilePrefixUrlKeyR = ("\",\"");
-					std::string strFileSuffixUrlKeyL = ("url\":\"");
-					std::string strFileSuffixUrlKeyR = ("\",\"");
-					std::string strPostData = ("action=downprocess&signs=") + strSignsValue + ("&sign=") + strSignValue + ("&ves=") + strVesValue + ("&websign=");
-					string_replace_all(strPostData, ("\%3F"), ("?"));
-					nRet = httpTool.http_post(strPostUrl, strPostData, {
-						{TEXT("origin:"),TEXT("https://yfvb.lanzous.com") },
-						{TEXT("referer:"),TEXT("https://yfvb.lanzous.com/fn?VzFQOlwyUj4AbgptBWZSa1Q_aUmFRKAVzUGoGMQdtU2MJPFcyC28FZVY2UT9QMw_c_c") },
-						});
-					if (nRet == 0)
 					{
-						strResp = httpTool.GetResult();
-						nLastPos = 0;
-						nNextPos = 0;
-						nNextPos = strResp.find(strFilePrefixUrlKeyL, nLastPos);
-						if (nNextPos >= 0)
+						CHttpTool httpTool;
+						std::string strPostUrl = ("https://yfvb.lanzous.com/ajaxm.php");
+						std::string strFilePrefixUrlKeyL = ("\"dom\":\"");
+						std::string strFilePrefixUrlKeyR = ("\",\"");
+						std::string strFileSuffixUrlKeyL = ("url\":\"");
+						std::string strFileSuffixUrlKeyR = ("\",\"");
+						std::string strPostData = ("action=downprocess&signs=") + strSignsValue + ("&sign=") + strSignValue + ("&ves=") + strVesValue + ("&websign=");
+						string_replace_all(strPostData, ("\%3F"), ("?"));
+						nRet = httpTool.http_post(strPostUrl, strPostData, {
+							{TEXT("origin:"),TEXT("https://yfvb.lanzous.com") },
+							{TEXT("referer:"),TEXT("https://yfvb.lanzous.com/fn?VzFQOlwyUj4AbgptBWZSa1Q_aUmFRKAVzUGoGMQdtU2MJPFcyC28FZVY2UT9QMw_c_c") },
+							});
+						if (nRet == 0)
 						{
-							nLastPos = nNextPos + strFilePrefixUrlKeyL.length();
-							nNextPos = strResp.find(strFilePrefixUrlKeyR, nLastPos);
+							strResp = httpTool.GetResult();
+							nLastPos = 0;
+							nNextPos = 0;
+							nNextPos = strResp.find(strFilePrefixUrlKeyL, nLastPos);
 							if (nNextPos >= 0)
 							{
-								strFilePrefixUrl = strResp.substr(nLastPos, nNextPos - nLastPos);
-								nLastPos = nNextPos + strFilePrefixUrlKeyR.length();
-								nNextPos = strResp.find(strFileSuffixUrlKeyL, nLastPos);
+								nLastPos = nNextPos + strFilePrefixUrlKeyL.length();
+								nNextPos = strResp.find(strFilePrefixUrlKeyR, nLastPos);
 								if (nNextPos >= 0)
 								{
-									nLastPos = nNextPos + strFileSuffixUrlKeyL.length();
-									nNextPos = strResp.find(strFileSuffixUrlKeyR, nLastPos);
+									strFilePrefixUrl = strResp.substr(nLastPos, nNextPos - nLastPos);
+									nLastPos = nNextPos + strFilePrefixUrlKeyR.length();
+									nNextPos = strResp.find(strFileSuffixUrlKeyL, nLastPos);
 									if (nNextPos >= 0)
 									{
-										strFileSuffixUrl = strResp.substr(nLastPos, nNextPos - nLastPos);
+										nLastPos = nNextPos + strFileSuffixUrlKeyL.length();
+										nNextPos = strResp.find(strFileSuffixUrlKeyR, nLastPos);
+										if (nNextPos >= 0)
+										{
+											strFileSuffixUrl = strResp.substr(nLastPos, nNextPos - nLastPos);
+											if (strFilePrefixUrl.length() > 0 && strFileSuffixUrl.length() > 0)
+											{
+												string_replace_all(strFilePrefixUrl, (""), ("\\"));
+												string_replace_all(strFilePrefixUrl, ("http"), ("https"));
+												string_replace_all(strFileSuffixUrl, (""), ("\\"));
+												strFileUrl = strFilePrefixUrl + ("/file/") + strFileSuffixUrl;
+											}
+										}
 									}
 								}
 							}
 						}
 					}
-				}
-				{
-					CHttpTool httpTool;
-					if (strFilePrefixUrl.length() > 0 && strFileSuffixUrl.length() > 0)
 					{
-						string_replace_all(strFilePrefixUrl, (""), ("\\"));
-						string_replace_all(strFilePrefixUrl, ("http"), ("https"));
-						string_replace_all(strFileSuffixUrl, (""), ("\\"));
-						strFileUrl = strFilePrefixUrl + ("/file/") + strFileSuffixUrl;
-					}
-					nRet = httpTool.http_get(strFileUrl, true);
-					if (nRet == 0)
-					{
-						strFileUrl = strResp = httpTool.GetResult();
+						CHttpTool httpTool;
+						nRet = httpTool.http_get(strFileUrl, true);
+						if (nRet == 0)
+						{
+							strFileUrl = strResp = httpTool.GetResult();
+						}
 					}
 				}
+				else 
 				{
-					CHttpTool httpTool;
-					nRet = httpTool.http_get_file(("aaa.7z"), strFileUrl, thiz);
+					strFileUrl = TToA(thiz->m_fileUrl);
+				}
+				if (!strFileUrl.empty())
+				{
+					{
+						//处理github的zip下载
+						std::string githubKeyL = "https://github.com/";
+						std::string githubKeyR = "/archive/master.zip";
+						nLastPos = 0;
+						nNextPos = 0;
+						nNextPos = strFileUrl.find(githubKeyL);
+						if (nNextPos != std::string::npos)
+						{
+							nLastPos = nNextPos + githubKeyL.length();
+							nNextPos = strFileUrl.find(githubKeyR);
+							if (nNextPos != std::string::npos)
+							{
+								strFileUrl = "https://codeload.github.com/" + strFileUrl.substr(nLastPos, nNextPos - nLastPos) + "/zip/master";
+							}
+						}
+					}
+					{
+						CHttpTool httpTool;
+						nRet = httpTool.http_get_file(TToA(thiz->m_savePath) + ("aaa.7z"), strFileUrl, thiz);
+					}
 				}
 				thiz->GetDlgItem(IDOK)->EnableWindow(TRUE);
 				thiz->m_taskThread = NULL;
@@ -451,6 +488,10 @@ void CVFBUPDDlg::OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes)
 	CProgressCtrl* pWnd = (CProgressCtrl*)GetDlgItem(IDC_PROGRESS_DOWNLOAD);
 	if (pWnd != NULL)
 	{
+		if (dwTotalBytes == 0)
+		{
+			dwTotalBytes = dwExistBytes;
+		}
 		pWnd->SetPos(((float)dwExistBytes / dwTotalBytes) * 100);
 		TSTRING tsText = TEXT("Progress: ") + TO_TSTRING(dwExistBytes) + TEXT("*100/") + TO_TSTRING(dwTotalBytes) + TEXT("=") + TO_TSTRING(((float)dwExistBytes / dwTotalBytes) * 100) + TEXT("%");
 		SetDlgItemText(IDC_STATIC_DOWNLOAD, tsText.c_str());
@@ -469,4 +510,10 @@ BOOL CVFBUPDDlg::CanExit()
 	}
 
 	return TRUE;
+}
+
+void CVFBUPDDlg::OnBnClickedButtonShow()
+{
+	// TODO: Add your control notification handler code here
+	ShellExecute(NULL, TEXT("OPEN"), TEXT("EXPLORER.EXE"), m_savePath.c_str(), NULL, SW_SHOWNORMAL);
 }
