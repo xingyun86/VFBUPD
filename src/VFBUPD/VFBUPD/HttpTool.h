@@ -414,7 +414,7 @@ public:
 
         if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
         {
-            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
+            //fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
             goto Exit;
         }
 
@@ -422,7 +422,7 @@ public:
         Error = AllocateAndInitializeRequestContext();
         if (Error != ERROR_SUCCESS)
         {
-            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
+            //fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
             goto Exit;
         }
 
@@ -480,7 +480,7 @@ public:
 
         if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
         {
-            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
+            //fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
             goto Exit;
         }
 
@@ -488,7 +488,7 @@ public:
         Error = AllocateAndInitializeRequestContext();
         if (Error != ERROR_SUCCESS)
         {
-            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
+            //fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
             goto Exit;
         }
 
@@ -654,7 +654,7 @@ private:
 
         if (CallbackPointer == INTERNET_INVALID_STATUS_CALLBACK)
         {
-            fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
+            //fprintf(stderr, "InternetSetStatusCallback failed with INTERNET_INVALID_STATUS_CALLBACK\n");
             goto Exit;
         }
 
@@ -662,7 +662,7 @@ private:
         Error = AllocateAndInitializeRequestContext();
         if (Error != ERROR_SUCCESS)
         {
-            fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
+            //fprintf(stderr, "AllocateAndInitializeRequestContext failed with error %d\n", Error);
             goto Exit;
         }
 
@@ -1080,7 +1080,7 @@ private:
 
         if (Result)
         {
-            fprintf(stderr, "%ws: %ws\n", Str, MsgBuffer);
+            //fprintf(stderr, "%ws: %ws\n", Str, MsgBuffer);
             LocalFree(MsgBuffer);
         }
         else
@@ -1697,7 +1697,7 @@ private:
 
         if (Error != ERROR_SUCCESS)
         {
-            fprintf(stderr, "OpenFiles failed with %d\n", Error);
+            //fprintf(stderr, "OpenFiles failed with %d\n", Error);
             goto Exit;
         }
 
@@ -1722,7 +1722,7 @@ private:
 
         if (Error != ERROR_SUCCESS)
         {
-            fprintf(stderr, "CreateWininetHandles failed with %d\n", Error);
+            //fprintf(stderr, "CreateWininetHandles failed with %d\n", Error);
             goto Exit;
         }
 
@@ -1980,62 +1980,62 @@ private:
 
         UNREFERENCED_PARAMETER(dwStatusInformationLength);
 
-        fprintf(stderr, "Callback Received for Handle %p \t", hInternet);
+        //fprintf(stderr, "Callback Received for Handle %p \t", hInternet);
 
         switch (dwInternetStatus)
         {
         case INTERNET_STATUS_COOKIE_SENT:
-            fprintf(stderr, "Status: Cookie found and will be sent with request\n");
+            //fprintf(stderr, "Status: Cookie found and will be sent with request\n");
             break;
 
         case INTERNET_STATUS_COOKIE_RECEIVED:
-            fprintf(stderr, "Status: Cookie Received\n");
+            //fprintf(stderr, "Status: Cookie Received\n");
             break;
 
         case INTERNET_STATUS_COOKIE_HISTORY:
 
-            fprintf(stderr, "Status: Cookie History\n");
+            //fprintf(stderr, "Status: Cookie History\n");
 
             cookieHistory = *((InternetCookieHistory*)lpvStatusInformation);
 
             if (cookieHistory.fAccepted)
             {
-                fprintf(stderr, "Cookie Accepted\n");
+                //fprintf(stderr, "Cookie Accepted\n");
             }
             if (cookieHistory.fLeashed)
             {
-                fprintf(stderr, "Cookie Leashed\n");
+                //fprintf(stderr, "Cookie Leashed\n");
             }
             if (cookieHistory.fDowngraded)
             {
-                fprintf(stderr, "Cookie Downgraded\n");
+                //fprintf(stderr, "Cookie Downgraded\n");
             }
             if (cookieHistory.fRejected)
             {
-                fprintf(stderr, "Cookie Rejected\n");
+                //fprintf(stderr, "Cookie Rejected\n");
             }
 
 
             break;
 
         case INTERNET_STATUS_CLOSING_CONNECTION:
-            fprintf(stderr, "Status: Closing Connection\n");
+            //fprintf(stderr, "Status: Closing Connection\n");
             break;
 
         case INTERNET_STATUS_CONNECTED_TO_SERVER:
-            fprintf(stderr, "Status: Connected to Server\n");
+            //fprintf(stderr, "Status: Connected to Server\n");
             break;
 
         case INTERNET_STATUS_CONNECTING_TO_SERVER:
-            fprintf(stderr, "Status: Connecting to Server\n");
+            //fprintf(stderr, "Status: Connecting to Server\n");
             break;
 
         case INTERNET_STATUS_CONNECTION_CLOSED:
-            fprintf(stderr, "Status: Connection Closed\n");
+            //fprintf(stderr, "Status: Connection Closed\n");
             break;
 
         case INTERNET_STATUS_HANDLE_CLOSING:
-            fprintf(stderr, "Status: Handle Closing\n");
+            //fprintf(stderr, "Status: Handle Closing\n");
 
             //
             // Signal the cleanup routine that it is
@@ -2047,29 +2047,29 @@ private:
             break;
 
         case INTERNET_STATUS_HANDLE_CREATED:
-            fprintf(stderr, "Handle %x created\n", ((LPINTERNET_ASYNC_RESULT)lpvStatusInformation)->dwResult);
+            //fprintf(stderr, "Handle %x created\n", ((LPINTERNET_ASYNC_RESULT)lpvStatusInformation)->dwResult);
 
             break;
 
         case INTERNET_STATUS_INTERMEDIATE_RESPONSE:
-            fprintf(stderr, "Status: Intermediate response\n");
+            //fprintf(stderr, "Status: Intermediate response\n");
             break;
 
         case INTERNET_STATUS_RECEIVING_RESPONSE:
-            fprintf(stderr, "Status: Receiving Response\n");
+            //fprintf(stderr, "Status: Receiving Response\n");
             break;
 
         case INTERNET_STATUS_RESPONSE_RECEIVED:
-            fprintf(stderr, "Status: Response Received (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
+            //fprintf(stderr, "Status: Response Received (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
 
             break;
 
         case INTERNET_STATUS_REDIRECT:
-            fprintf(stderr, "Status: Redirect\n");
+            //fprintf(stderr, "Status: Redirect\n");
             break;
 
         case INTERNET_STATUS_REQUEST_COMPLETE:
-            fprintf(stderr, "Status: Request complete\n");
+            //fprintf(stderr, "Status: Request complete\n");
 
             thiz->ProcessRequest(((LPINTERNET_ASYNC_RESULT)lpvStatusInformation)->dwError);
 
@@ -2077,35 +2077,35 @@ private:
 
         case INTERNET_STATUS_REQUEST_SENT:
 
-            fprintf(stderr, "Status: Request sent (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
+            //fprintf(stderr, "Status: Request sent (%d Bytes)\n", *((LPDWORD)lpvStatusInformation));
             break;
 
         case INTERNET_STATUS_DETECTING_PROXY:
-            fprintf(stderr, "Status: Detecting Proxy\n");
+            //fprintf(stderr, "Status: Detecting Proxy\n");
             break;
 
         case INTERNET_STATUS_RESOLVING_NAME:
-            fprintf(stderr, "Status: Resolving Name\n");
+            //fprintf(stderr, "Status: Resolving Name\n");
             break;
 
         case INTERNET_STATUS_NAME_RESOLVED:
-            fprintf(stderr, "Status: Name Resolved\n");
+            //fprintf(stderr, "Status: Name Resolved\n");
             break;
 
         case INTERNET_STATUS_SENDING_REQUEST:
-            fprintf(stderr, "Status: Sending request\n");
+            //fprintf(stderr, "Status: Sending request\n");
             break;
 
         case INTERNET_STATUS_STATE_CHANGE:
-            fprintf(stderr, "Status: State Change\n");
+            //fprintf(stderr, "Status: State Change\n");
             break;
 
         case INTERNET_STATUS_P3P_HEADER:
-            fprintf(stderr, "Status: Received P3P header\n");
+            //fprintf(stderr, "Status: Received P3P header\n");
             break;
 
         default:
-            fprintf(stderr, "Status: Unknown (%d)\n", dwInternetStatus);
+            //fprintf(stderr, "Status: Unknown (%d)\n", dwInternetStatus);
             break;
         }
 
@@ -2229,7 +2229,7 @@ private:
 
             if (Error == ERROR_IO_PENDING)
             {
-                fprintf(stderr, "Waiting for InternetWriteFile to complete\n");
+                //fprintf(stderr, "Waiting for InternetWriteFile to complete\n");
             }
             else
             {
@@ -2264,7 +2264,7 @@ private:
         DWORD Error = ERROR_SUCCESS;
         BOOL Success;
 
-        fprintf(stderr, "Finished posting file\n");
+        //fprintf(stderr, "Finished posting file\n");
 
         Success = AcquireRequestHandle();
         if (!Success)
@@ -2282,7 +2282,7 @@ private:
             Error = GetLastError();
             if (Error == ERROR_IO_PENDING)
             {
-                fprintf(stderr, "Waiting for HttpEndRequest to complete \n");
+                //fprintf(stderr, "Waiting for HttpEndRequest to complete \n");
             }
             else
             {
@@ -2345,7 +2345,7 @@ private:
             Error = GetLastError();
             if (Error == ERROR_IO_PENDING)
             {
-                fprintf(stderr, "Waiting for InternetReadFile to complete\n");
+                //fprintf(stderr, "Waiting for InternetReadFile to complete\n");
             }
             else
             {

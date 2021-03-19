@@ -125,6 +125,7 @@ BOOL CVFBUPDApp::InitInstance()
 	}
 #endif
 	CVFBUPDDlg dlg;
+	m_FloatFrame.Create(IDD_DIALOG_FLOAT);
 	m_pMainWnd = &dlg;
 	INT_PTR nResponse = dlg.DoModal();
 	if (nResponse == IDOK)
@@ -142,6 +143,8 @@ BOOL CVFBUPDApp::InitInstance()
 		TRACE(traceAppMsg, 0, "Warning: dialog creation failed, so application is terminating unexpectedly.\n");
 		TRACE(traceAppMsg, 0, "Warning: if you are using MFC controls on the dialog, you cannot #define _AFX_NO_MFC_CONTROLS_IN_DIALOGS.\n");
 	}
+	
+	m_FloatFrame.DestroyWindow();
 
 	// Delete the shell manager created above.
 	if (pShellManager != nullptr)

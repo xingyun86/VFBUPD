@@ -91,7 +91,7 @@ BOOL CVFBUPDDlg::OnInitDialog()
 	CDialogEx::OnInitDialog();
 
 	// Add "About..." menu item to system menu.
-
+	// 
 	// IDM_ABOUTBOX must be in the system command range.
 	ASSERT((IDM_ABOUTBOX & 0xFFF0) == IDM_ABOUTBOX);
 	ASSERT(IDM_ABOUTBOX < 0xF000);
@@ -129,6 +129,8 @@ BOOL CVFBUPDDlg::OnInitDialog()
 	}
 	CreateDirectory(m_savePath.c_str(), NULL);
 
+	theApp.m_FloatFrame.ShowWindow(SW_SHOWNORMAL);
+	theApp.m_FloatFrame.ShowTopMost();
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
 

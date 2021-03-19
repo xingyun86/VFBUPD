@@ -9,7 +9,7 @@
 #endif
 
 #include "resource.h"		// main symbols
-
+#include "FloatFrame.h"
 
 // CVFBUPDApp:
 // See VFBUPD.cpp for the implementation of this class
@@ -28,6 +28,8 @@ public:
 // Implementation
 
 	DECLARE_MESSAGE_MAP()
+public:
+	CFloatFrame m_FloatFrame = {};
 };
 
 extern CVFBUPDApp theApp;
