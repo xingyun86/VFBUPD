@@ -597,7 +597,7 @@ void CVFBUPDDlg::OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes)
 		}
 		pWnd->SetPos(((float)dwExistBytes / dwTotalBytes) * 100);
 		TCHAR tzText[MAX_PATH] = { 0 };
-		_stprintf_s(tzText, TEXT("%.2f"), (((float)dwExistBytes / dwTotalBytes) * 100));
+		_stprintf_s(tzText, TEXT("%.2f%\%"), (((float)dwExistBytes / dwTotalBytes) * 100));
 		theApp.m_FloatFrame.SetDlgItemText(IDC_STATIC_STATUS, tzText);
 		SetDlgItemText(IDC_STATIC_DOWNLOAD, tzText);
 	}
