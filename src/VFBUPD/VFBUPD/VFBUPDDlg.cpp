@@ -128,9 +128,9 @@ BOOL CVFBUPDDlg::OnInitDialog()
 		pWnd->SetStep(1);
 	}
 	CreateDirectory(m_savePath.c_str(), NULL);
+	
+	theApp.ShowFloatFrame();
 
-	theApp.m_FloatFrame.ShowWindow(SW_SHOWNORMAL);
-	theApp.m_FloatFrame.ShowTopMost();
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
 
@@ -195,6 +195,122 @@ void CVFBUPDDlg::OnClose()
 		CDialogEx::OnClose();
 }
 
+// URL encode
+std::string UrlEncode(const std::string& dec) {
+	std::string enc = ("");
+	unsigned char* p = (unsigned char*)dec.c_str();
+	unsigned char ch;
+	while (*p) {
+		ch = (unsigned char)*p;
+		if (*p == ' ') {
+			enc += '+';
+		}
+		else if (((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) 
+			|| strchr("-_.~!*'();:@&=+$,/?#[]", ch)) {
+			enc += *p;
+		}
+		else {
+			enc += '%';
+			enc += (unsigned char)(((unsigned char)(ch >> 4)) > 9 ? ((unsigned char)(ch >> 4)) + 55 : ((unsigned char)(ch >> 4)) + 48);
+			enc += (unsigned char)(((unsigned char)(ch % 16)) > 9 ? ((unsigned char)(ch % 16)) + 55 : ((unsigned char)(ch % 16)) + 48);
+		}
+		++p;
+	}
+	return enc;
+}
+// URL decode
+std::string UrlDecode(const std::string& enc) {
+	std::string dec = ("");
+	int i;
+	char* cd = (char*)enc.c_str();
+	char p[2];
+	for (i = 0; i < strlen(cd); i++) {
+		memset(p, '\0', 2);
+		if (cd[i] != '%') {
+			dec += cd[i];
+			continue;
+		}
+		p[0] = cd[++i];
+		p[1] = cd[++i];
+		p[0] = p[0] - 48 - ((p[0] >= 'A') ? 7 : 0) - ((p[0] >= 'a') ? 32 : 0);
+		p[1] = p[1] - 48 - ((p[1] >= 'A') ? 7 : 0) - ((p[1] >= 'a') ? 32 : 0);
+		dec += (unsigned char)(p[0] * 16 + p[1]);
+	}
+	return dec;
+}
+std::string GetUrlFileName(std::string& url)
+{
+	std::string strFileName = "";
+	size_t nPos = url.find(".baidupcs.com/file");
+	if (nPos != std::string::npos)
+	{
+		std::string strL = "&fin=";
+		size_t nPosL = url.find(strL, nPos);
+		if (nPosL != std::string::npos)
+		{
+			std::string strR = "&";
+			nPosL += strL.length();
+			size_t nPosR = url.find(strR, nPosL);
+			if (nPosR != std::string::npos)
+			{
+				std::string tmp = url.substr(nPosL, nPosR - nPosL);
+				strFileName = UrlDecode(tmp);
+				if (DetectEncode((uint8_t*)strFileName.data(), strFileName.size()) == Encode::UTF8)
+				{
+					strFileName = UTF8ToA(strFileName);
+				}
+			}
+		}
+	}
+	else
+	{
+		std::string question = "?";
+		nPos = url.find(question);
+		if (nPos != std::string::npos)
+		{
+			std::string sub_url = url.substr(0, nPos);
+			if (sub_url.rfind(".") != std::string::npos
+				&& sub_url.rfind("/") != std::string::npos
+				&& sub_url.rfind(".") > sub_url.rfind("/")
+				)
+			{
+				strFileName = sub_url.substr(sub_url.rfind("/") + 1);
+			}
+		}
+		else
+		{
+			if (url.rfind(".") != std::string::npos
+				&& url.rfind("/") != std::string::npos
+				&& url.rfind(".") > url.rfind("/")
+				)
+			{
+				strFileName = url.substr(url.rfind("/") + 1);
+			}
+		}
+	}
+	if (strFileName.empty())
+	{
+		strFileName = std::to_string(time(nullptr)) + ".zip";
+	}
+	{
+		//处理github的zip下载
+		std::string githubKeyL = "https://github.com/";
+		std::string githubKeyR = "/archive/master.zip";
+		size_t nLastPos = 0;
+		size_t nNextPos = 0;
+		nNextPos = url.find(githubKeyL);
+		if (nNextPos != std::string::npos)
+		{
+			nLastPos = nNextPos + githubKeyL.length();
+			nNextPos = url.find(githubKeyR);
+			if (nNextPos != std::string::npos)
+			{
+				url = "https://codeload.github.com/" + url.substr(nLastPos, nNextPos - nLastPos) + "/zip/master";
+			}
+		}
+	}
+	return strFileName;
+}
 void CVFBUPDDlg::OnOK()
 {
 	if (m_taskThread == nullptr)
@@ -448,26 +564,11 @@ void CVFBUPDDlg::OnOK()
 				}
 				if (!strFileUrl.empty())
 				{
-					{
-						//处理github的zip下载
-						std::string githubKeyL = "https://github.com/";
-						std::string githubKeyR = "/archive/master.zip";
-						nLastPos = 0;
-						nNextPos = 0;
-						nNextPos = strFileUrl.find(githubKeyL);
-						if (nNextPos != std::string::npos)
-						{
-							nLastPos = nNextPos + githubKeyL.length();
-							nNextPos = strFileUrl.find(githubKeyR);
-							if (nNextPos != std::string::npos)
-							{
-								strFileUrl = "https://codeload.github.com/" + strFileUrl.substr(nLastPos, nNextPos - nLastPos) + "/zip/master";
-							}
-						}
-					}
+					std::string strSaveFileName = GetUrlFileName(strFileUrl);
+				
 					{
 						CHttpTool httpTool;
-						nRet = httpTool.http_get_file(TToA(thiz->m_savePath) + ("aaa.7z"), strFileUrl, thiz);
+						nRet = httpTool.http_get_file(TToA(thiz->m_savePath) + ("/") + strSaveFileName, strFileUrl, thiz);
 					}
 				}
 				thiz->GetDlgItem(IDOK)->EnableWindow(TRUE);
@@ -495,8 +596,10 @@ void CVFBUPDDlg::OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes)
 			dwTotalBytes = dwExistBytes;
 		}
 		pWnd->SetPos(((float)dwExistBytes / dwTotalBytes) * 100);
-		TSTRING tsText = TEXT("Progress: ") + TO_TSTRING(dwExistBytes) + TEXT("*100/") + TO_TSTRING(dwTotalBytes) + TEXT("=") + TO_TSTRING(((float)dwExistBytes / dwTotalBytes) * 100) + TEXT("%");
-		SetDlgItemText(IDC_STATIC_DOWNLOAD, tsText.c_str());
+		TCHAR tzText[MAX_PATH] = { 0 };
+		_stprintf_s(tzText, TEXT("%.2f"), (((float)dwExistBytes / dwTotalBytes) * 100));
+		theApp.m_FloatFrame.SetDlgItemText(IDC_STATIC_STATUS, tzText);
+		SetDlgItemText(IDC_STATIC_DOWNLOAD, tzText);
 	}
 }
 

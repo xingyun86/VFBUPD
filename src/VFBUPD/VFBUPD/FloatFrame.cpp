@@ -3,8 +3,8 @@
 
 #include "pch.h"
 #include "VFBUPD.h"
-#include "FloatFrame.h"
 #include "afxdialogex.h"
+#include "FloatFrame.h"
 
 
 // CFloatFrame dialog
@@ -14,7 +14,7 @@ IMPLEMENT_DYNAMIC(CFloatFrame, CDialogEx)
 CFloatFrame::CFloatFrame(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_DIALOG_FLOAT, pParent)
 {
-	m_font.CreatePointFont(160, TEXT("ËÎÌå"));
+	m_font.CreatePointFont(130, TEXT("ËÎÌå"));
 }
 
 CFloatFrame::~CFloatFrame()
@@ -30,6 +30,7 @@ void CFloatFrame::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(CFloatFrame, CDialogEx)
 	ON_WM_NCHITTEST()
+	ON_WM_MOVE()
 END_MESSAGE_MAP()
 
 
@@ -39,7 +40,8 @@ BOOL CFloatFrame::OnInitDialog()
 {
 	::SetWindowLongPtr(this->GetSafeHwnd(), GWL_EXSTYLE, GetWindowLongPtr(this->GetSafeHwnd(), GWL_EXSTYLE) | WS_EX_TOPMOST | WS_EX_TOOLWINDOW & (~WS_EX_APPWINDOW));
 	GetDlgItem(IDC_STATIC_STATUS)->SetFont(&m_font);
-	GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(TEXT("²âÊÔ"));
+	GetDlgItem(IDC_STATIC_STATUS)->SetWindowText(TEXT(""));
+	theApp.LoadFloatFramePosition();
 	return FALSE;
 }
 
@@ -92,4 +94,13 @@ LRESULT CFloatFrame::OnNcHitTest(CPoint point)
 	}
 	return 0;
 	//return CDialogEx::OnNcHitTest(point);
+}
+
+
+void CFloatFrame::OnMove(int x, int y)
+{
+	CDialogEx::OnMove(x, y);
+
+	// TODO: Add your message handler code here
+	theApp.SaveFloatFramePosition();
 }

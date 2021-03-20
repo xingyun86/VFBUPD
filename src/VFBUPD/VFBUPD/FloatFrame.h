@@ -1,6 +1,5 @@
 #pragma once
 
-
 // CFloatFrame dialog
 
 class CFloatFrame : public CDialogEx
@@ -21,15 +20,8 @@ protected:
 
 	virtual BOOL OnInitDialog();
 	afx_msg LRESULT OnNcHitTest(CPoint point);
+	afx_msg void OnMove(int x, int y);
 	DECLARE_MESSAGE_MAP()
 public:
 	CFont m_font = {};
-	void ShowTopMost()
-	{
-		::SetWindowPos(this->GetSafeHwnd(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-	}
-	void ShowNoTopMost()
-	{
-		::SetWindowPos(this->GetSafeHwnd(), HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-	}
 };
