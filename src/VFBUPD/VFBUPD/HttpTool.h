@@ -195,7 +195,7 @@ Encode IsUtf8Data(const uint8_t* data, size_t size)
     bool bAnsi = true;
     uint8_t ch = 0x00;
     int32_t nBytes = 0;
-    for (auto i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
     {
         ch = *(data + i);
         if ((ch & 0x80) != 0x00)
@@ -454,6 +454,9 @@ public:
         std::wstring wsData = (L"");
         unsigned long nDataSize = 0;
         DWORD Error = ERROR_SUCCESS;
+#ifdef INTERNET_OPTION_ENABLE_HTTP_PROTOCOL
+        DWORD dwHttpProtocolFlags = HTTP_PROTOCOL_FLAG_HTTP2; 
+#endif
 
         // Callback function
         INTERNET_STATUS_CALLBACK CallbackPointer = NULL;
@@ -468,7 +471,9 @@ public:
             STRING_PTR(m_Configuration.ProxyName),       // Proxy name
             STRING_PTR(m_Configuration.ProxyBypassName),                          // Proxy bypass, do not bypass any address
             INTERNET_FLAG_ASYNC);          // 0 for Synchronous
-
+#ifdef INTERNET_OPTION_ENABLE_HTTP_PROTOCOL
+        InternetSetOption(m_SessionHandle, INTERNET_OPTION_ENABLE_HTTP_PROTOCOL, &dwHttpProtocolFlags, sizeof(dwHttpProtocolFlags));
+#endif
         if (m_SessionHandle == NULL)
         {
             LogInetError(GetLastError(), L"InternetOpen");
@@ -767,7 +772,7 @@ private:
         m_Configuration.reset();
         //m_Configuration.HttpVersion = L"HTTP/2";
         m_Configuration.Instance = inst;
-        std::wstring& wUrl = AToW(url);
+        std::wstring wUrl = AToW(url);
         int nNextPos = 0;
         int nLastPos = 0;
         const std::wstring& wstrHttp = L"http://";
@@ -1290,11 +1295,11 @@ private:
         // Set the Verb depending on the operation to perform
         if (m_ReqContext.Method == METHOD_GET)
         {
-            Verb = L"GET";
+            Verb = (LPWSTR)L"GET";
         }
         else
         {
-            Verb = L"POST";
+            Verb = (LPWSTR)L"POST";
         }
 
         //
