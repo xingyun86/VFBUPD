@@ -31,6 +31,7 @@ void CFloatFrame::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CFloatFrame, CDialogEx)
 	ON_WM_NCHITTEST()
 	ON_WM_MOVE()
+	ON_STN_DBLCLK(IDC_STATIC_STATUS, &CFloatFrame::OnStnDblclickStaticStatus)
 END_MESSAGE_MAP()
 
 
@@ -90,7 +91,7 @@ LRESULT CFloatFrame::OnNcHitTest(CPoint point)
 			ClientToScreen(&rect);
 			return rect.PtInRect(point) ? HTCAPTION : CDialog::OnNcHitTest(point);   //鼠标如果在客户区，将其当作标题栏
 		}
-		return CWnd::OnNcHitTest(point);
+		return CDialogEx::OnNcHitTest(point);
 	}
 	return 0;
 	//return CDialogEx::OnNcHitTest(point);
@@ -103,4 +104,14 @@ void CFloatFrame::OnMove(int x, int y)
 
 	// TODO: Add your message handler code here
 	theApp.SaveFloatFramePosition();
+}
+
+
+void CFloatFrame::OnStnDblclickStaticStatus()
+{
+	// TODO: Add your control notification handler code here
+	//if (theApp.m_dlg->IsWindowVisible() == FALSE)
+	{
+		theApp.m_dlg->ShowWindow(SW_SHOWNORMAL);
+	}
 }

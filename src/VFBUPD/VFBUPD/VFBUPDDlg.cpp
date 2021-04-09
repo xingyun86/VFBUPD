@@ -295,7 +295,7 @@ std::string GetUrlFileName(std::string& url)
 	{
 		//处理github的zip下载
 		std::string githubKeyL = "https://github.com/";
-		std::string githubKeyR = "/archive/master.zip";
+		std::string githubKeyR = "/archive/refs/heads/main.zip";
 		size_t nLastPos = 0;
 		size_t nNextPos = 0;
 		nNextPos = url.find(githubKeyL);
@@ -305,7 +305,7 @@ std::string GetUrlFileName(std::string& url)
 			nNextPos = url.find(githubKeyR);
 			if (nNextPos != std::string::npos)
 			{
-				url = "https://codeload.github.com/" + url.substr(nLastPos, nNextPos - nLastPos) + "/zip/master";
+				url = "https://codeload.github.com/" + url.substr(nLastPos, nNextPos - nLastPos) + "/zip/refs/heads/main";
 			}
 		}
 	}
@@ -323,6 +323,7 @@ void CVFBUPDDlg::OnOK()
 			return;
 		}
 		GetDlgItem(IDOK)->EnableWindow(FALSE);
+		GetDlgItem(IDC_EDIT_URL)->EnableWindow(FALSE);
 		m_taskThread = std::make_shared<std::thread>([](void* p)
 			{
 				CVFBUPDDlg* thiz = (CVFBUPDDlg*)p;
@@ -571,6 +572,7 @@ void CVFBUPDDlg::OnOK()
 						nRet = httpTool.http_get_file(TToA(thiz->m_savePath) + ("/") + strSaveFileName, strFileUrl, thiz);
 					}
 				}
+				thiz->GetDlgItem(IDC_EDIT_URL)->EnableWindow(TRUE);
 				thiz->GetDlgItem(IDOK)->EnableWindow(TRUE);
 				thiz->m_taskThread = NULL;
 			}, this);
@@ -598,7 +600,7 @@ void CVFBUPDDlg::OnProgress(DWORD dwTotalBytes, DWORD dwExistBytes)
 		pWnd->SetPos(((float)dwExistBytes / dwTotalBytes) * 100);
 		TCHAR tzText[MAX_PATH] = { 0 };
 		_stprintf_s(tzText, TEXT("%.2f%\%"), (((float)dwExistBytes / dwTotalBytes) * 100));
-		theApp.m_FloatFrame.SetDlgItemText(IDC_STATIC_STATUS, tzText);
+		theApp.m_FloatFrame->SetDlgItemText(IDC_STATIC_STATUS, tzText);
 		SetDlgItemText(IDC_STATIC_DOWNLOAD, tzText);
 	}
 }

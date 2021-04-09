@@ -24,4 +24,5 @@ protected:
 	DECLARE_MESSAGE_MAP()
 public:
 	CFont m_font = {};
+	afx_msg void OnStnDblclickStaticStatus();
 };

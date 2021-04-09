@@ -5,7 +5,6 @@
 #include "pch.h"
 #include "framework.h"
 #include "VFBUPD.h"
-#include "VFBUPDDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -124,10 +123,11 @@ BOOL CVFBUPDApp::InitInstance()
 		freopen(("CONOUT$"), ("wb"), stderr);
 	}
 #endif
-	CVFBUPDDlg dlg;
-	m_FloatFrame.Create(IDD_DIALOG_FLOAT);
-	m_pMainWnd = &dlg;
-	INT_PTR nResponse = dlg.DoModal();
+	m_dlg = std::make_shared<CVFBUPDDlg>();
+	m_FloatFrame = std::make_shared<CFloatFrame>();
+	m_FloatFrame->Create(IDD_DIALOG_FLOAT);
+	m_pMainWnd = m_dlg.get();
+	INT_PTR nResponse = m_dlg->DoModal();
 	if (nResponse == IDOK)
 	{
 		// TODO: Place code here to handle when the dialog is
@@ -144,7 +144,7 @@ BOOL CVFBUPDApp::InitInstance()
 		TRACE(traceAppMsg, 0, "Warning: if you are using MFC controls on the dialog, you cannot #define _AFX_NO_MFC_CONTROLS_IN_DIALOGS.\n");
 	}
 	
-	m_FloatFrame.DestroyWindow();
+	m_FloatFrame->DestroyWindow();
 
 	// Delete the shell manager created above.
 	if (pShellManager != nullptr)

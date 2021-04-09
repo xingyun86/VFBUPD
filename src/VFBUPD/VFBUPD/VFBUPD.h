@@ -10,6 +10,7 @@
 
 #include "resource.h"		// main symbols
 #include "FloatFrame.h"
+#include "VFBUPDDlg.h"
 
 // CVFBUPDApp:
 // See VFBUPD.cpp for the implementation of this class
@@ -29,17 +30,18 @@ public:
 
 	DECLARE_MESSAGE_MAP()
 public:
-	CFloatFrame m_FloatFrame = {};
+	std::shared_ptr<CVFBUPDDlg> m_dlg = nullptr;
+	std::shared_ptr<CFloatFrame> m_FloatFrame = nullptr;
 	BOOL m_bFloatFrame = FALSE;
 	POINT m_ptFloat = { 0,0 };
 	void ShowFloatFrame() {
-		m_FloatFrame.ShowWindow(SW_SHOWNORMAL);
-		m_FloatFrame.SetWindowPos(&CWnd::wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+		m_FloatFrame->ShowWindow(SW_SHOWNORMAL);
+		m_FloatFrame->SetWindowPos(&CWnd::wndTopMost, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 	}
 	void LoadFloatFramePosition() {
 		CString text = GetProfileString(TEXT("POINT"), TEXT("FLOAT"), TEXT("(0,0)"));
 		_stscanf_s(text, TEXT("(%d,%d)"), &m_ptFloat.x, &m_ptFloat.y);
-		m_FloatFrame.SetWindowPos(&CWnd::wndTopMost, m_ptFloat.x, m_ptFloat.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		m_FloatFrame->SetWindowPos(&CWnd::wndTopMost, m_ptFloat.x, m_ptFloat.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		if (m_bFloatFrame == FALSE)
 		{
 			m_bFloatFrame = TRUE;
@@ -51,7 +53,7 @@ public:
 		{
 			CRect rc = { 0 };
 			CString text(TEXT(""));
-			m_FloatFrame.GetWindowRect(rc);
+			m_FloatFrame->GetWindowRect(rc);
 			m_ptFloat.x = rc.left;
 			m_ptFloat.y = rc.top;
 			text.Format(TEXT("(%d,%d)"), m_ptFloat.x, m_ptFloat.y);
