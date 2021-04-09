@@ -295,17 +295,24 @@ std::string GetUrlFileName(std::string& url)
 	{
 		//处理github的zip下载
 		std::string githubKeyL = "https://github.com/";
-		std::string githubKeyR = "/archive/refs/heads/main.zip";
+		std::string githubKeyR = "/archive/refs/heads/";
+		std::string githubKeyRR = ".zip";
 		size_t nLastPos = 0;
 		size_t nNextPos = 0;
 		nNextPos = url.find(githubKeyL);
 		if (nNextPos != std::string::npos)
 		{
 			nLastPos = nNextPos + githubKeyL.length();
-			nNextPos = url.find(githubKeyR);
+			nNextPos = url.find(githubKeyR, nLastPos);
 			if (nNextPos != std::string::npos)
 			{
-				url = "https://codeload.github.com/" + url.substr(nLastPos, nNextPos - nLastPos) + "/zip/refs/heads/main";
+				std::string author = url.substr(nLastPos, nNextPos - nLastPos);
+				nLastPos = nNextPos + githubKeyR.length();
+				nNextPos = url.find(githubKeyRR, nLastPos);
+				if (nNextPos != std::string::npos)
+				{
+					url = "https://codeload.github.com/" + author +"/zip/refs/heads/" + url.substr(nLastPos, nNextPos - nLastPos);
+				}
 			}
 		}
 	}
