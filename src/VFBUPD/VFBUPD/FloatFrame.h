@@ -19,10 +19,10 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
 
 	virtual BOOL OnInitDialog();
-	afx_msg LRESULT OnNcHitTest(CPoint point);
 	afx_msg void OnMove(int x, int y);
+	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
 	DECLARE_MESSAGE_MAP()
 public:
 	CFont m_font = {};
-	afx_msg void OnStnDblclickStaticStatus();
 };

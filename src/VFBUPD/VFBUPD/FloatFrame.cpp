@@ -14,7 +14,7 @@ IMPLEMENT_DYNAMIC(CFloatFrame, CDialogEx)
 CFloatFrame::CFloatFrame(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_DIALOG_FLOAT, pParent)
 {
-	m_font.CreatePointFont(80, TEXT("宋体"));
+	m_font.CreatePointFont(128, TEXT("宋体"));
 }
 
 CFloatFrame::~CFloatFrame()
@@ -29,9 +29,9 @@ void CFloatFrame::DoDataExchange(CDataExchange* pDX)
 
 
 BEGIN_MESSAGE_MAP(CFloatFrame, CDialogEx)
-	ON_WM_NCHITTEST()
 	ON_WM_MOVE()
-	ON_STN_DBLCLK(IDC_STATIC_STATUS, &CFloatFrame::OnStnDblclickStaticStatus)
+	ON_WM_LBUTTONDOWN()
+	ON_WM_LBUTTONDBLCLK()
 END_MESSAGE_MAP()
 
 
@@ -46,58 +46,6 @@ BOOL CFloatFrame::OnInitDialog()
 	return FALSE;
 }
 
-LRESULT CFloatFrame::OnNcHitTest(CPoint point)
-{
-	// TODO: Add your message handler code here and/or call default
-
-	CRect rect;
-	GetWindowRect(&rect);
-	CRect rect1 = rect;
-	rect1.DeflateRect(6, 6, -6, -6);
-	rect1.NormalizeRect();
-	if (point.x <= rect.left + 2)
-		return HTLEFT;
-	else if (point.x >= rect.right - 2)
-		return HTRIGHT;
-	else if (point.y <= rect.top + 2)
-		return HTTOP;
-	else if (point.y >= rect.bottom - 2)
-		return HTBOTTOM;
-	else if (point.x <= rect.left + 6 && point.y <= rect.top + 6)
-		return HTTOPLEFT;
-	else if (point.x >= rect.right - 6 && point.y <= rect.top + 6)
-		return HTTOPRIGHT;
-	else if (point.x <= rect.left + 6 && point.y >= rect.bottom - 6)
-		return HTBOTTOMLEFT;
-	else if (point.x >= rect.right - 6 && point.y >= rect.bottom - 6)
-		return HTBOTTOMRIGHT;
-	else if (!rect.IsRectEmpty())
-	{
-		LRESULT uRet = CWnd::OnNcHitTest(point);
-		uRet = (uRet == HTCLIENT) ? HTCAPTION : uRet;
-		return uRet;
-	}
-	else
-	{
-		{
-			CRect rect = {};
-			CRect rectOk = {};
-			CRect rectCancel = {};
-			GetClientRect(&rect);
-			GetDlgItem(IDOK)->GetClientRect(rectOk);
-			GetDlgItem(IDCANCEL)->GetClientRect(rectCancel);
-			rect.right = rect.Width() - (rectOk.Width() + rectCancel.Width());
-			rect.bottom = rectOk.Height();
-			ClientToScreen(&rect);
-			return rect.PtInRect(point) ? HTCAPTION : CDialog::OnNcHitTest(point);   //鼠标如果在客户区，将其当作标题栏
-		}
-		return CDialogEx::OnNcHitTest(point);
-	}
-	return 0;
-	//return CDialogEx::OnNcHitTest(point);
-}
-
-
 void CFloatFrame::OnMove(int x, int y)
 {
 	CDialogEx::OnMove(x, y);
@@ -107,11 +55,18 @@ void CFloatFrame::OnMove(int x, int y)
 }
 
 
-void CFloatFrame::OnStnDblclickStaticStatus()
+void CFloatFrame::OnLButtonDown(UINT nFlags, CPoint point)
 {
-	// TODO: Add your control notification handler code here
-	//if (theApp.m_dlg->IsWindowVisible() == FALSE)
-	{
-		theApp.m_dlg->ShowWindow(SW_SHOWNORMAL);
-	}
+	// TODO: Add your message handler code here and/or call default
+	PostMessage(WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(point.x, point.y));
+	CDialogEx::OnLButtonDown(nFlags, point);
+}
+
+
+void CFloatFrame::OnLButtonDblClk(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	theApp.m_dlg->ShowWindow(SW_SHOWNORMAL);
+
+	CDialogEx::OnLButtonDblClk(nFlags, point);
 }
