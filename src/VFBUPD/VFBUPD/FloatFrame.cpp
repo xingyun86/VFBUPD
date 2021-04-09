@@ -14,7 +14,7 @@ IMPLEMENT_DYNAMIC(CFloatFrame, CDialogEx)
 CFloatFrame::CFloatFrame(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_DIALOG_FLOAT, pParent)
 {
-	m_font.CreatePointFont(96, TEXT("ËÎÌו"));
+	m_font.CreatePointFont(80, TEXT("ËÎÌו"));
 }
 
 CFloatFrame::~CFloatFrame()
